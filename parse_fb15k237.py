@@ -57,7 +57,7 @@ def parse_fb15k(path, num_workers):
     print(len(unique_p))
 
 
-    chunks = np.array_split(dataset, num_workers)
+    chunks = np.array_split(unique_entities, num_workers)
     with Pool(processes=num_workers) as pool:
         pos, neg = pool.starmap(f, zip(chunks, repeat(QUERY_ENTITY)))
     final_res = list(set(list(itertools.chain(*pos))))
