@@ -96,4 +96,4 @@ def query_kg(query):
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         sys.exit("Path to the files with dataset is required")
-    parse_fb15k(sys.argv[1], sys.argv[2])
+    parse_fb15k(sys.argv[1], int(sys.argv[2]))
