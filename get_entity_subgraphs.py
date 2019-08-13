@@ -63,8 +63,8 @@ def parallel_sample(path, num_workers, q):
         query = QUERY_ENT_STATEMENTS
     elif q == "direct":
         query = QUERY_ENT_METADATA_DIRECT
-    else:
-        query = QUERY_ENT_METADATA_DIRECT
+    elif q == "uri_only":
+        query = QUERY_ENT_STATEMENTS_ONLY_URIS
 
     print(f"Getting {q}")
 
@@ -82,4 +82,6 @@ def parallel_sample(path, num_workers, q):
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         sys.exit("Path to the files with dataset is required")
-    parallel_sample(sys.argv[1], 28, "statements")
+    #parallel_sample(sys.argv[1], 28, "statements")
+    parallel_sample(sys.argv[1], 28, "uri_only")
+    parallel_sample(sys.argv[1], 28, "direct")
