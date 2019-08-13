@@ -94,6 +94,6 @@ def query_kg(query):
         raise Exception("Smth is wrong with the endpoint", str(e), " , ", r.status_code)
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        sys.exit("Path to the json file with dataset is required")
-    parse_fb15k(sys.argv[1], 4)
+    if len(sys.argv) != 3:
+        sys.exit("Path to the files with dataset is required")
+    parse_fb15k(sys.argv[1], sys.argv[2])
