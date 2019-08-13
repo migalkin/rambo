@@ -34,7 +34,7 @@ def f(x, query):
             print(f"No mapping for {uri}")
         count += 1
 
-    return results_yes, results_no
+    return (results_yes, results_no)
 
 def parse_fb15k(path, num_workers):
     s, p = [], []
@@ -62,8 +62,8 @@ def parse_fb15k(path, num_workers):
     chunks = np.array_split(unique_entities, num_workers)
     with Pool(processes=num_workers) as pool:
         results = pool.starmap(f, zip(chunks, repeat(QUERY_ENTITY)))
-    final_res = list(set(list(itertools.chain(*results[0]))))
-    final_neg = list(set(list(itertools.chain(*results[1]))))
+    final_res = list(set(list(itertools.chain(*[i[0] for i in results]))))
+    final_neg = list(set(list(itertools.chain(*[i[1] for i in results]))))
 
     print(f"Found {len(final_res)} / {len(unique_entities)} mappings")
     # for fb_uri in unique_entities:
@@ -79,7 +79,7 @@ def parse_fb15k(path, num_workers):
     #
     #
 
-    with open("fb15k_237_wikidata_entities.txt", "w") as out, open("fb15k_toto.txt", "w") as out2:
+    with open("fb15k_237_wikidata_entities.txt", "w") as out, open("fb15k_todo.txt", "w") as out2:
         out.write("\n".join(final_res))
         out2.write("\n".join(final_neg))
 
