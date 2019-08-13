@@ -22,15 +22,17 @@ def f(x, query):
     print(multiprocessing.current_process())
     results_yes, results_no = [], []
 
+    count = 1
     for uri in x:
         res = query_kg(query.format(uri))
         if len(res["results"]["bindings"]) > 0:
             wd_uri = res["results"]["bindings"][0]["s"]["value"]
-            print(f"{uri} : {wd_uri}")
+            print(f"{uri} : {wd_uri}, {count}/{len(x)}")
             results_yes.append(wd_uri)
         else:
             results_no.append(uri)
             print(f"No mapping for {uri}")
+        count += 1
 
     return results_yes, results_no
 
@@ -59,9 +61,9 @@ def parse_fb15k(path, num_workers):
 
     chunks = np.array_split(unique_entities, num_workers)
     with Pool(processes=num_workers) as pool:
-        pos, neg = pool.starmap(f, zip(chunks, repeat(QUERY_ENTITY)))
-    final_res = list(set(list(itertools.chain(*pos))))
-    final_neg = list(set(list(itertools.chain(*neg))))
+        results = pool.starmap(f, zip(chunks, repeat(QUERY_ENTITY)))
+    final_res = list(set(list(itertools.chain(*results[0]))))
+    final_neg = list(set(list(itertools.chain(*results[1]))))
 
     print(f"Found {len(final_res)} / {len(unique_entities)} mappings")
     # for fb_uri in unique_entities:
