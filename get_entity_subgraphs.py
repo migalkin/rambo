@@ -11,19 +11,19 @@ import itertools
 import codecs
 
 QUERY_ENT_METADATA_DIRECT = """
-    CONSTRUCT {{ {0!s} ?p ?o }} where {{ {0!s} ?p ?o FILTER (regex(str(?p), "direct/")) }}
+    CONSTRUCT {{ <{0!s}> ?p ?o }} where {{ <{0!s}> ?p ?o FILTER (regex(str(?p), "direct/")) }}
 """
 
 QUERY_ENT_STATEMENTS = """
-    CONSTRUCT {{  {0!s} ?p ?o . ?o ?p1 ?o1 }} WHERE {{
-      {0!s} ?p ?o .
+    CONSTRUCT {{  <{0!s}> ?p ?o . ?o ?p1 ?o1 }} WHERE {{
+      <{0!s}> ?p ?o .
       ?o ?p1 ?o1 FILTER (regex(str(?p1), "statement/") || regex(str(?p1), "qualifier/P") ) 
     }}
 """
 
 QUERY_ENT_STATEMENTS_ONLY_URIS = """
-    CONSTRUCT {{  {0!s} ?p ?o . ?o ?p1 ?o1 }} WHERE {{
-      {0!s} ?p ?o .
+    CONSTRUCT {{  <{0!s}> ?p ?o . ?o ?p1 ?o1 }} WHERE {{
+      <{0!s}> ?p ?o .
       ?o ?p1 ?o1 FILTER (regex(str(?p1), "statement/") || regex(str(?p1), "qualifier/P") ) .
       ?o1 a wikibase:Item .
     }}
