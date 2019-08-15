@@ -128,3 +128,6 @@ dmypy.json
 ./data/raw_data/fb15k_wd_uri_only.nt
 ./data/parsed_data/*
 ./data/pre_training_data/*
+
+mytorch
+
