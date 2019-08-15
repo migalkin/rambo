@@ -2,8 +2,12 @@ from tqdm import tqdm_notebook as tqdm
 from pprint import pprint
 import pickle
 import pandas as pd
-
-from utils import *
+from pathlib import Path
+from collections import namedtuple
+Quint = namedtuple('Quint', 's p o qp qe')
+RAW_DATA_DIR = Path('./data/raw_data')
+PARSED_DATA_DIR = Path('./data/parsed_data')
+PRETRAINING_DATA_DIR = Path('./data/pre_training_data')
 
 
 def generate_data(sid_key, sid_value):
