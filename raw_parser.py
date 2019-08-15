@@ -3,9 +3,7 @@ from pprint import pprint
 import pickle
 import pandas as pd
 
-from collections import namedtuple
-Quint = namedtuple('Quint', 's p o qp qe')
-
+from utils import *
 
 
 def generate_data(sid_key, sid_value):
@@ -49,7 +47,7 @@ def generate_data(sid_key, sid_value):
 if __name__ == "__main__":
 
     raw_data = []
-    with open('./fb15k_wd_uri_only.nt', 'r') as f:
+    with open(RAW_DATA_DIR / 'fb15k_wd_uri_only.nt', 'r') as f:
         for line in f.readlines():
             raw_data.append(line)
 
@@ -72,16 +70,16 @@ if __name__ == "__main__":
         parsed_data += res
 
 
-    with open('./parsed_raw_data.pkl', 'wb+') as f:
+    with open(PARSED_DATA_DIR / 'parsed_raw_data.pkl', 'wb+') as f:
         pickle.dump(parsed_data, f)
 
     df = pd.DataFrame(parsed_data)
-    df.to_csv('./parsed_raw_data.csv', index=False)
+    df.to_csv(PARSED_DATA_DIR / 'parsed_raw_data.csv', index=False)
 
 
     template1 = "<< {0!s} {1!s} {2!s} >> {3!s} {4!s} . \n"
     template2 = "<< {0!s} {1!s} {2!s} >> . \n"
-    with open("parsed_raw_data.rs", "w") as f:
+    with open(PARSED_DATA_DIR / "parsed_raw_data.rs", "w") as f:
         for row in parsed_data:
             if row[3]!= None:
                 f.write(template1.format(row[0], row[1], row[2], row[3], row[4]))
