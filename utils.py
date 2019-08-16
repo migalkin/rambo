@@ -111,6 +111,37 @@ class QuintRankingSampler:
 
         return _pos, _neg
 
+
+class SingleSampler:
+    """ Another sampler which gives correct + all corrupted things for one triple """
+
+    def __init__(self, data):
+        self.data = {'pos': np.array(data['pos']), 'neg': np.array(data['neg'])}
+
+        assert len(self.data['pos']) == len(self.data['neg']), "Mismatched lengths between pos and neg data!"
+        self.shuffle()
+
+    def shuffle(self):
+        shuffle_ids = np.arange(len(self.data['pos']))
+        np.random.shuffle(shuffle_ids)
+
+        self.data = {'pos': self.data['pos'][shuffle_ids], 'neg': self.data['pos'][shuffle_ids]}
+
+    def __len__(self):
+        return len(self.data['pos'])
+
+    def __iter__(self):
+        self.i = 0
+        return self
+
+    def __next__(self):
+        """ Concat pos quint with n neg quints (corresponding)"""
+        res = np.zeros((self.data['neg'][self.i].__len__() + 1, 5))
+        res[0] = self.data['pos'][self.i]
+        res[1:] = self.data['neg'][self.i]
+        return res
+
+
 if __name__ == "__main__":
     pass
     # Test it
