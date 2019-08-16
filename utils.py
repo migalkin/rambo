@@ -115,8 +115,9 @@ class QuintRankingSampler:
 class SingleSampler:
     """ Another sampler which gives correct + all corrupted things for one triple """
 
-    def __init__(self, data):
-        self.data = {'pos': np.array(data['pos']), 'neg': np.array(data['neg'])}
+    def __init__(self, data: dict, bs: int):
+        self.data = {'pos': np.array(data['pos'], dtype=np.int), 'neg': np.array(data['neg'], dtype=np.int)}
+        self.bs = bs
 
         assert len(self.data['pos']) == len(self.data['neg']), "Mismatched lengths between pos and neg data!"
         self.shuffle()
@@ -125,10 +126,10 @@ class SingleSampler:
         shuffle_ids = np.arange(len(self.data['pos']))
         np.random.shuffle(shuffle_ids)
 
-        self.data = {'pos': self.data['pos'][shuffle_ids], 'neg': self.data['pos'][shuffle_ids]}
+        self.data = {'pos': self.data['pos'][shuffle_ids], 'neg': self.data['neg'][shuffle_ids]}
 
     def __len__(self):
-        return len(self.data['pos'])
+        return len(self.data['pos']) // self.bs
 
     def __iter__(self):
         self.i = 0
@@ -136,13 +137,18 @@ class SingleSampler:
 
     def __next__(self):
         """ Concat pos quint with n neg quints (corresponding)"""
-        if self.i >= self.__len__():
+        if self.i >= self.data['pos'].__len__():
             print("Should stop")
             raise StopIteration
 
-        res = np.zeros((self.data['neg'][self.i].__len__() + 1, 5))
-        res[0] = self.data['pos'][self.i]
-        res[1:] = self.data['neg'][self.i]
+        res = np.zeros((self.bs, self.data['neg'][self.i].__len__() + 1, 5), dtype=np.int)
+        pos = self.data['pos'][self.i: min(self.i + self.bs, len(self.data['pos']))]
+        neg = self.data['neg'][self.i: min(self.i + self.bs, len(self.data['neg']))]
+        for i, (_p, _n) in enumerate(zip(pos, neg)):
+            res[i, 0] = _p
+            res[i, 1:] = _n
+
+        self.i += self.bs
         return res
 
 
