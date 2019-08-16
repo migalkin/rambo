@@ -136,6 +136,10 @@ class SingleSampler:
 
     def __next__(self):
         """ Concat pos quint with n neg quints (corresponding)"""
+        if self.i >= self.__len__():
+            print("Should stop")
+            raise StopIteration
+
         res = np.zeros((self.data['neg'][self.i].__len__() + 1, 5))
         res[0] = self.data['pos'][self.i]
         res[1:] = self.data['neg'][self.i]
