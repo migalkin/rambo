@@ -15,6 +15,9 @@ PRETRAINING_DATA_DIR = Path('./data/pre_training_data')
 with open(PARSED_DATA_DIR / 'parsed_raw_data.pkl', 'rb') as f:
     raw_data = pickle.load(f)
 
+# with open('./data/parsed_data/parsed_raw_data.pkl', 'rb') as f:
+#     raw_data = pickle.load(f)
+
 entities, predicates = [], []
 
 for quint in raw_data:
