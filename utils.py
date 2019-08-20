@@ -1,15 +1,22 @@
 """ Some things needed across the board"""
-from collections import namedtuple
-from pathlib import Path
+import torch
 import pickle
-
-from tqdm import tqdm
 import numpy as np
+import torch.nn as nn
+from pathlib import Path
+from typing import Optional, List, Union
+from collections import namedtuple
+
+from mytorch.utils.goodies import Timer
 
 Quint = namedtuple('Quint', 's p o qp qe')
 RAW_DATA_DIR = Path('./data/raw_data')
 PARSED_DATA_DIR = Path('./data/parsed_data')
 PRETRAINING_DATA_DIR = Path('./data/pre_training_data')
+
+
+class UnknownSliceLength(Exception): pass
+
 
 # Load data from disk
 with open(PARSED_DATA_DIR / 'parsed_raw_data.pkl', 'rb') as f:
@@ -116,11 +123,22 @@ class QuintRankingSampler:
 
 
 class SingleSampler:
-    """ Another sampler which gives correct + all corrupted things for one triple """
+    """
+        Another sampler which gives correct + all corrupted things for one triple
+        [NOTE]: Depriciated
+    """
 
-    def __init__(self, data: dict, bs: int):
+    def __init__(self, data: dict, bs: int, n_items: int = 5):
+        """
+            Returns a pair of `bs` [pos, neg, neg, neg, neg ... ] per iteration.
+
+        :param data: a dict with {'pos': __, 'neg': __} format
+        :param bs: int of batch size (returned on one iter)
+        :param n_items: 5 if we're sampling quints, 3 if triples.
+        """
         self.data = {'pos': np.array(data['pos'], dtype=np.int), 'neg': np.array(data['neg'], dtype=np.int)}
         self.bs = bs
+        self.n_items = n_items
 
         assert len(self.data['pos']) == len(self.data['neg']), "Mismatched lengths between pos and neg data!"
         self.shuffle()
@@ -144,7 +162,7 @@ class SingleSampler:
             print("Should stop")
             raise StopIteration
 
-        res = np.zeros((self.bs, self.data['neg'][self.i].__len__() + 1, 5), dtype=np.int)
+        res = np.zeros((self.bs, self.data['neg'][self.i].__len__() + 1, self.n_items), dtype=np.int)
         pos = self.data['pos'][self.i: min(self.i + self.bs, len(self.data['pos']))]
         neg = self.data['neg'][self.i: min(self.i + self.bs, len(self.data['neg']))]
         for i, (_p, _n) in enumerate(zip(pos, neg)):
@@ -155,10 +173,142 @@ class SingleSampler:
         return res
 
 
+class EvaluationBench:
+    """
+        Sampler which generates every possible negative corruption of a positive triple.
+        So given 15k entities and triples (not quints), we get 30k-2 negative triples.
+
+        # Corruption Scheme
+        1. Case: Triples
+            -> given <s,p,o>
+            -> make <s`, p, o> where s` \in E, and s` != s
+                -> if <s`, p, o> \in dataset: remove if "filtered" flag
+            -> make <s, p, o`> where o` \in E and o` != o
+                -> if <s, p, o`> \in dataset: remove if "filtered" flag
+        2. Case: Quints
+            -> given <s, p, o, qp, qe>
+            -> make <s`, p, o, qp, qe> where s` \in E, and s` != s
+                -> if <s`, p, o, qp, qe> \in dataset: remove if "filtered" flag
+            -> make <s, p, o`, qp, qe> where o` \in E and o` != o
+                -> if <s, p, o`, qp, qe> \in dataset: remove if "filtered" flag
+            -> make <s, p, o, qp, qe`> where qe` \in E, and qe` != qe
+                -> if <s, p, o, qp, qe`> \in dataset: remove if "filtered" flag
+
+        Once done, it uses the model given to it, feeding it data and storing the np outputs.
+        Returns crisp, concise metrics.
+
+        # Data Storing Scheme
+        1. Keep hashes of data along with actual data (which is 1D array of 3 or 5 items)
+        2. Generate all negatives if not already found in disk. If found, load. (DO NOT RUN THIS ON LOW RAM PCs)
+    """
+
+    def __init__(self, data: Union[List[int], np.array], model: nn.Module,
+                 bs: int, filtered: bool = False, quints: bool = True):
+        """
+
+        :param data: list/iter of positive triples. Np array are appreciated
+        :param bs: anything under 256 is shooting yourself in the foot.
+        :param filtered: if you want corrupted triples checked.
+        :param quints: if the data has 5 elements
+        """
+        self.bs, self.filtered, self.quints = bs, filtered, quints
+        self.model = model
+
+        self.data, self.hashes = self.store_pos(data)
+        self.n_entities = self.model.num_entities
+
+
+    def store_pos(self, pos_data: Union[List[int], np.array]) \
+            -> (np.array, Union[None, List[dict]]):
+        """
+            if we're filtering, we need to come back to this data very often.
+            In that case, we compute <ent> based hashes for quick lookup of corrupted element.
+
+            @TODO: test!!
+
+        :param pos_data: iter
+        :return: (pos_data, and hashes if needed)
+        """
+
+        if not self.filtered:
+            return pos_data, None
+
+        # We ARE doing filtering if here.
+        if self.quints:
+            hashes = {}, {}, {}
+            """
+            Dear reader,
+            
+            Make of this what you will. 
+            Peace!
+            [ 
+                : ---- :D
+                : ---- :D
+                : ---- :D  
+            ]
+            """
+            for quint in pos_data:
+                s, p, o, qp, qe = quint
+                hashes[0].setdefault((p,o, qp, qe), []).append(s)
+                hashes[1].get([s, p, qp, qe], []).append(o)
+                hashes[2].get([s, p, o, qp], []).append(qe)
+
+        else:
+            hashes = {}, {}
+            for triple in pos_data:
+                s, p, o, qp, qe = triple
+                hashes[0].setdefault((p,o), []).append(s)
+                hashes[1].get([s, p], []).append(o)
+
+        return pos_data, hashes
+
+    def get_negatives(self, ps: np.array) -> np.array:
+        """
+            Generate all needed negatives for given triple/quint
+
+        :return: None
+        """
+        if not self.filtered:
+            n = 3 if self.quints else 2
+            neg_datum = np.zeros((self.n_entities*n - n, len(ps)))
+
+            # Corrupting s
+            wrong_s = np.hstack((np.arange(0, ps[0]), np.arange(ps[0]+1, self.n_entities)))
+            neg_datum[:self.n_entities-1, 0] =  wrong_s
+            neg_datum[:self.n_entities-1, 1:] = ps[1:]
+
+            # Corrupting o
+            wrong_o = np.hstack((np.arange(0, ps[2]), np.arange(ps[2]+1, self.n_entities)))
+            neg_datum[self.n_entities-1: self.n_entities*2-2, 2] = wrong_o
+            neg_datum[self.n_entities-1: self.n_entities*2-2, :2] = ps[:2]
+            # If we have quints, also copy over the qualifiers
+            if self.quints:
+                neg_datum[self.n_entities-1: self.n_entities*2-2, 3:] = ps[3:]
+
+                # Corrupting qe
+                wrong_qe = np.hstack((np.arange(0, ps[-1]), np.arange(ps[-1]+1, self.n_entities)))
+                neg_datum[self.n_entities*2-2:, -1] = wrong_qe
+                neg_datum[self.n_entities*2-2:, :-1] = ps[:-1]
+
+        return neg_datum
+
+
 if __name__ == "__main__":
-    pass
-    # Test it
-    # sampler = QuintRankingSampler({"pos": raw_data, "neg": ... }, bs=4000)
-    # for x in tqdm(sampler):
-    #     pass
+    class DummyModel(nn.Module):
+        num_entities = 15000
+
+    pos_data = np.random.randint(0, 15000, (400000, 5))
+    bs = 2
+    filtered = False
+    quint = True
+
+    eb = EvaluationBench(data=pos_data, model=DummyModel(), bs=bs, filtered=filtered, quints=quint)
+    ps = pos_data[0]
+    print(ps)
+    with Timer() as timer:
+        ng = eb.get_negatives(ps)
+    print(ng.shape, timer.interval, timer.interval*pos_data.shape[0])
+    print(ng)
+
+
 
