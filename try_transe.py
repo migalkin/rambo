@@ -95,7 +95,7 @@ class BaseModule(nn.Module):
         return self.entity_embeddings(entities).view(-1, self.embedding_dim)
 
     def _compute_loss(self, positive_scores: torch.Tensor, negative_scores: torch.Tensor) -> torch.Tensor:
-        y = np.repeat([-1], repeats=positive_scores.shape[0])
+        y = np.repeat([1], repeats=positive_scores.shape[0])
         y = torch.tensor(y, dtype=torch.float, device=self.device)
 
         loss = self.criterion(positive_scores, negative_scores, y)
@@ -260,7 +260,7 @@ for negative in negatives:
 
 # # %%
 config = EXPERIMENT_CONFIG.copy()
-config['DEVICE'] = torch.device('cpu')
+config['DEVICE'] = torch.device('cuda')
 model = TransE(config)
 model.to(config['DEVICE'])
 optimizer = torch.optim.SGD(model.parameters(), lr=config['LEARNING_RATE'])
