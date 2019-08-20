@@ -250,17 +250,45 @@ class EvaluationBench:
             for quint in pos_data:
                 s, p, o, qp, qe = quint
                 hashes[0].setdefault((p,o, qp, qe), []).append(s)
-                hashes[1].get([s, p, qp, qe], []).append(o)
-                hashes[2].get([s, p, o, qp], []).append(qe)
+                hashes[1].setdefault((s, p, qp, qe), []).append(o)
+                hashes[2].setdefault((s, p, o, qp), []).append(qe)
 
         else:
             hashes = {}, {}
             for triple in pos_data:
                 s, p, o, qp, qe = triple
                 hashes[0].setdefault((p,o), []).append(s)
-                hashes[1].get([s, p], []).append(o)
+                hashes[1].setdefault([s, p], []).append(o)
 
         return pos_data, hashes
+
+    def _get_corruptable_entities_(self, corruption_pos:int, pos_data: np.array) -> Union[list, np.array]:
+        """
+        Get all possible corruptable entities given this triple/quint and for this position {1,3,5}.
+        Eg. if self.filtered:
+                corruption_position = 0
+                ps = [11,22,33,44,55]
+                also exists in dataset = [99,22,33,44,55]
+                then - n_ent - 2 diff things
+            else:
+                all but ps[corruption_position]
+
+            :param corruption_pos: int signifying whether we're fucking up s, o, or qe
+            :param pos_data: true triple/quint
+            :return list of ints/np.array of ints
+        """
+        assert corruption_pos in [0, 2, 4], "Excuse me waht the fukk. Invalid position for corruption!"
+
+        if not self.filtered:
+            return np.hstack((np.arange(0, pos_data[corruption_pos]), np.arange(pos_data[corruption_pos] + 1, self.n_entities)))
+        else:
+            _hash_pos = int(corruption_pos / 2)
+            hashes = self.hashes[_hash_pos]
+
+            key = tuple(np.hstack((pos_data[:corruption_pos], pos_data[corruption_pos + 1:])))
+            existing = hashes[key]
+            raw_corruptables = np.arange(self.n_entities)
+            return np.delete(raw_corruptables, existing)
 
     def get_negatives(self, ps: np.array) -> np.array:
         """
@@ -268,27 +296,34 @@ class EvaluationBench:
 
         :return: None
         """
-        if not self.filtered:
-            n = 3 if self.quints else 2
-            neg_datum = np.zeros((self.n_entities*n - n, len(ps)))
+        n = 3 if self.quints else 2
+        # neg_datum = np.zeros((self.n_entities*n - n, len(ps)))
 
-            # Corrupting s
-            wrong_s = np.hstack((np.arange(0, ps[0]), np.arange(ps[0]+1, self.n_entities)))
-            neg_datum[:self.n_entities-1, 0] =  wrong_s
-            neg_datum[:self.n_entities-1, 1:] = ps[1:]
+        # Corrupting s
+        wrong_s = self._get_corruptable_entities_(corruption_pos=0, pos_data=ps)
+        neg_datum_s = np.zeros((wrong_s.shape[0], len(ps)))
+        neg_datum_s[:, 0] =  wrong_s
+        neg_datum_s[:, 1:] = ps[1:]
 
-            # Corrupting o
-            wrong_o = np.hstack((np.arange(0, ps[2]), np.arange(ps[2]+1, self.n_entities)))
-            neg_datum[self.n_entities-1: self.n_entities*2-2, 2] = wrong_o
-            neg_datum[self.n_entities-1: self.n_entities*2-2, :2] = ps[:2]
-            # If we have quints, also copy over the qualifiers
-            if self.quints:
-                neg_datum[self.n_entities-1: self.n_entities*2-2, 3:] = ps[3:]
+        # Corrupting o
+        wrong_o = self._get_corruptable_entities_(corruption_pos=2, pos_data=ps)
+        neg_datum_o = np.zeros((wrong_o.shape[0], len(ps)))
+        neg_datum_o[:, 2] = wrong_o
+        neg_datum_o[:, :2] = ps[:2]
 
-                # Corrupting qe
-                wrong_qe = np.hstack((np.arange(0, ps[-1]), np.arange(ps[-1]+1, self.n_entities)))
-                neg_datum[self.n_entities*2-2:, -1] = wrong_qe
-                neg_datum[self.n_entities*2-2:, :-1] = ps[:-1]
+        # If we have quints, also copy over the qualifiers
+        if self.quints:
+            neg_datum_o[:, 3:] = ps[3:]
+
+            # Corrupting qe
+            wrong_qe = self._get_corruptable_entities_(corruption_pos=4, pos_data=ps)
+            neg_datum_qe = np.zeros((wrong_qe.shape[0], len(ps)))
+            neg_datum_qe[:, -1] = wrong_qe
+            neg_datum_qe[:, :-1] = ps[:-1]
+
+            neg_datum = np.vstack((neg_datum_s, neg_datum_o, neg_datum_qe))
+        else:
+            neg_datum = np.vstack((neg_datum_s, neg_datum_o))
 
         return neg_datum
 
@@ -299,8 +334,9 @@ if __name__ == "__main__":
 
     pos_data = np.random.randint(0, 15000, (400000, 5))
     bs = 2
-    filtered = False
+    filtered = True
     quint = True
+
 
     eb = EvaluationBench(data=pos_data, model=DummyModel(), bs=bs, filtered=filtered, quints=quint)
     ps = pos_data[0]
