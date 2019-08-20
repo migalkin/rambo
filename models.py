@@ -61,7 +61,7 @@ class BaseModule(nn.Module):
         return self.entity_embeddings(entities).view(-1, self.embedding_dim)
 
     def _compute_loss(self, positive_scores: torch.Tensor, negative_scores: torch.Tensor) -> torch.Tensor:
-        y = np.repeat([1], repeats=positive_scores.shape[0])
+        y = np.repeat([-1], repeats=positive_scores.shape[0])
         y = torch.tensor(y, dtype=torch.float, device=self.device)
 
         loss = self.criterion(positive_scores, negative_scores, y)
