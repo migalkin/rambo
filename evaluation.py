@@ -92,7 +92,7 @@ class EvaluationBench:
             ]
             """
             for quint in pos_data:
-                s, p, o, qp, qe = quint
+                s, p, o, qp, qe = quint[0], quint[1], quint[2], quint[3], quint[4]
                 hashes[0].setdefault((p, o, qp, qe), []).append(s)
                 hashes[1].setdefault((s, p, qp, qe), []).append(o)
                 hashes[2].setdefault((s, p, o, qp), []).append(qe)
