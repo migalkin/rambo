@@ -47,6 +47,69 @@ def generate_data(sid_key, sid_value):
 
     return result
 
+def generate_full_quints_statement(sid_key, sid_value):
+    # Get all the rights
+    result, qualifiers = [], []
+    s, p, o = None, None, None
+    for triple in sid_value:
+        if triple[0] == sid_key and '/qualifier' in triple[1]:
+            qualifiers.append(triple)
+        elif triple[0] == sid_key and '/statement' in triple[1]:
+            o = triple[2].split('/')[-1].replace('>', '')
+        elif triple[-1] == sid_key:
+            s, p = triple[0].split('/')[-1].replace('>', ''), triple[1].split('/')[-1].replace('>', '')
+
+    try:
+        assert s
+        assert p
+    except AssertionError:
+        raise IOError
+    try:
+        assert o
+    except AssertionError:
+        return []
+
+    statement = {}
+    statement['s'], statement['p'], statement['o'] = s, p, o
+    statement['qualifiers'] = []
+    if len(qualifiers) > 0:
+        for qualifier in qualifiers:
+            qp, qe = qualifier[1].split('/')[-1].replace('>', ''), qualifier[2].split('/')[-1].replace('>', '')
+            statement['qualifiers'].append((qp, qe))
+
+    return statement
+
+def generate_stdreif(sid_key, sid_value):
+    result, qualifiers = {}, []
+    s, p, o = None, None, None
+    for triple in sid_value:
+        if triple[0] == sid_key and '/qualifier' in triple[1]:
+            qualifiers.append(triple)
+        elif triple[0] == sid_key and '/statement' in triple[1]:
+            o = triple[2].split('/')[-1].replace('>', '')
+        elif triple[-1] == sid_key:
+            s, p = triple[0].split('/')[-1].replace('>', ''), triple[1].split('/')[-1].replace('>', '')
+
+    try:
+        assert s
+        assert p
+    except AssertionError:
+        raise IOError
+    try:
+        assert o
+    except AssertionError:
+        return []
+
+    result["sid"] = sid_key
+    result["rdf:subject"], result["rdf:predicate"], result["rdf:object"] = s, p, o
+    if len(qualifiers) > 0:
+        for qualifier in qualifiers:
+            qp, qe = qualifier[1].split('/')[-1].replace('>', ''), qualifier[2].split('/')[-1].replace('>', '')
+            result[qp] = qe
+
+    return result
+
+
 
 if __name__ == "__main__":
 
@@ -66,6 +129,8 @@ if __name__ == "__main__":
 
     parsed_data = []
     skipped = 0
+
+    ## generate flat quints
     for sid_key, sid_value in tqdm(sids.items()):
         res = generate_data(sid_key, sid_value)
         if res == []:
@@ -89,3 +154,45 @@ if __name__ == "__main__":
                 f.write(template1.format(row[0], row[1], row[2], row[3], row[4]))
             else:
                 f.write(template2.format(row[0], row[1], row[2]))
+
+    ## generate good quints
+    good_quints = []
+    for sid_key, sid_value in tqdm(sids.items()):
+        res = generate_full_quints_statement(sid_key, sid_value)
+        if res == []:
+            continue
+        good_quints.append(res)
+    templ = """ << {0!s} {1!s} {2!s} >> {3!s} . \n"""
+
+    """
+    <<  s p o  >> q1 v1;
+                q2 v2;
+                qn, vn .
+    """
+
+    with open(PARSED_DATA_DIR / "parsed_raw_full_quints_statements.rs", "w") as f:
+        for row in good_quints:
+            qual_string = " ;\n\t".join(f"{qp} {qe}" for qp,qe in row["qualifiers"])
+            f.write(templ.format(row['s'], row['p'], row['o'], qual_string))
+
+    with open(PARSED_DATA_DIR / "parsed_raw_full_quints_statements.pkl", "wb+") as f:
+        pickle.dump(good_quints, f)
+
+
+    ## generate stdreif
+    stdreif = []
+    for sid_key, sid_value in tqdm(sids.items()):
+        res = generate_stdreif(sid_key, sid_value)
+        if res == []:
+            continue
+        stdreif.append(res)
+
+    with open(PARSED_DATA_DIR / "parsed_raw_data_stdreif.pkl", "wb+") as f:
+        pickle.dump(stdreif, f)
+
+    with open(PARSED_DATA_DIR / "parsed_raw_data_stdreif.nt", "w") as f:
+        for row in stdreif:
+            key = row["sid"].strip("<>")
+            for p in list(row.keys()):
+                if p != "sid":
+                    f.write(f"{key} {p} {row[p]} . \n")
