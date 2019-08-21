@@ -1,6 +1,9 @@
-from utils import *
+from functools import partial
 from tqdm import tqdm
+import types
 
+# Local
+from utils import *
 
 class EvaluationBench:
     """
@@ -33,7 +36,7 @@ class EvaluationBench:
 
     def __init__(
             self,
-            data: Union[List[int], np.array],
+            data: Dict[str, Union[List[int], np.array]],
             model: nn.Module,
             bs: int,
             metrics: dict = ('acc', 'mrr'),
@@ -41,7 +44,8 @@ class EvaluationBench:
             _quints: bool = True):
         """
 
-        :param data: list/iter of positive triples. Np array are appreciated
+        :param data: {'train': list/iter of positive triples, 'valid': list/iter of positive triples}.
+            Np array are appreciated
         :param bs: anything under 256 is shooting yourself in the foot.
         :param _filtered: if you want corrupted triples checked.
         :param _quints: if the data has 5 elements
@@ -49,9 +53,14 @@ class EvaluationBench:
         self.bs, self.filtered, self.quints = bs, _filtered, _quints
         self.model = model
 
-        self.data, self.hashes = self._index_pos_(data)
+        self.data_valid = data['valid']
+        self.hashes = self._index_pos_(np.append(data['train'], data['valid']))
         self.n_entities = self.model.num_entities
-        self.metrics = [getattr(self, metric) for metric in metrics]
+        self.metrics = metrics
+
+    def reset(self):
+        """ Call when you wanna run again but not change hashes etc """
+        raise NotImplementedError
 
     def _index_pos_(self, pos_data: Union[List[int], np.array]) \
             -> (np.array, Union[None, List[dict]]):
@@ -66,7 +75,7 @@ class EvaluationBench:
         """
 
         if not self.filtered:
-            return pos_data, None
+            return None
 
         # We ARE doing filtering if here.
         if self.quints:
@@ -95,7 +104,7 @@ class EvaluationBench:
                 hashes[0].setdefault((p, o), []).append(s)
                 hashes[1].setdefault([s, p], []).append(o)
 
-        return pos_data, hashes
+        return hashes
 
     def _get_corruptable_entities_(self, corruption_pos: int, pos_data: np.array) -> Union[list, np.array]:
         """
@@ -165,17 +174,31 @@ class EvaluationBench:
 
     def _compute_metric_(self, scores: np.array) -> List[Union[float, np.float]]:
         """ See what metrics are to be computed, and compute them."""
-        # @TODO: dis
-        pass
+        return [_metric(scores) for _metric in self.metrics ]
 
-    def summarize_metrics(self, accumulated_metrics: List[List[Union[float, np.float]]]) \
-            -> List[Union[float, np.float]]:
-        """ Aggregate metrics across time"""
-        ...
+    def _summarize_metrics_(self, accumulated_metrics: np.array) -> np.array:
+        """
+            Aggregate metrics across time. Accepts np array of (len(self.data_valid), len(self.metrics))
+            Detecting partials based on https://stackoverflow.com/a/45485147
+        """
+        mean = np.mean(accumulated_metrics, axis=0)
+        summary = {}
+        for i, _metric in enumerate(self.metrics):
+            if isinstance(_metric, (types.FunctionType, partial)):
+                summary[_metric.func.__name__ + ' ' + str(_metric.keywords['k'])] = mean[i]
+            else:
+                summary[_metric.__name__] = mean[i]
 
-    def summarize_run(self, summarized_metrics: List[Union[float, torch.float]]):
+         return summary
+
+    @staticmethod
+    def summarize_run(self, summary: dict):
         """ Nicely print what just went down """
-        print("Too lazy to print shit")
+        print(f"This run over {summary['data_length']} {'quints' if summary['quints'] else 'triples'} took "
+              f"%(time).3f min" % {'time': summary['time_taken']/60.0})
+        print("---------\n")
+        for k,v in summary['metrics'].items():
+            print(k, ':', "%(v).4f" % {'v': v})
 
     def run(self):
         """
@@ -185,14 +208,14 @@ class EvaluationBench:
         metrics = []
 
         with Timer() as timer:
-            for pos in tqdm(self.data):
+            for pos in tqdm(self.data_valid):
                 neg = self._get_negatives_(pos)
 
                 if len(neg) + 1 < self.bs:  # Can do it in one iteration
                     with torch.no_grad():
                         x = torch.tensor(np.vstack((pos.transpose(), neg)), dtype=torch.long,
                                          device=self.model.config['DEVICE'])
-                        scores = self.model.predict(x).detach().cpu().numpy()
+                        scores = self.model.predict(x)
 
                 else:
                     scores = np.array([])
@@ -203,21 +226,21 @@ class EvaluationBench:
                                              device=self.model.config['DEVICE'])
                         else:
                             x = torch.tensor(_neg, dtype=torch.long, device=self.model.config['DEVICE'])
-                        scores = np.append(scores, self.model.predict(x).detach().cpu().numpy())
+                        scores = np.append(scores, self.model.predict(x))
 
                 _metrics = self._compute_metric_(scores)
                 metrics.append(_metrics)
 
+        # Spruce up the summary with more information
         time_taken = timer.interval
+        metrics = self._summarize_metrics_(metrics)
+        del metrics # Clean up the memory
+        summary = {'metrics': metrics, 'time_taken': time_taken, 'data_length': len(self.data_valid),
+                   'quints': self.quints, 'filtered': self.filtered}
 
-        summarized_metrics = self._summarize_metrics_(metrics)
+        self.summarize_run(summary)
 
-        del metrics
-        summarized_metrics['time_taken'] = time_taken
-
-        self.summarize_run(summarized_metrics)
-
-        return summarized_metrics
+        return summary
 
 
 def acc(scores: torch.Tensor) -> np.float:
@@ -226,14 +249,17 @@ def acc(scores: torch.Tensor) -> np.float:
 
 
 def mrr(scores: torch.Tensor) -> np.float:
+    """ Tested | Accepts one (n,) tensor """
     ranks = (torch.argsort(scores, dim=0) == 0).nonzero()[0]
     recirank = 1.0/(ranks+1).float()
     return recirank.detach().cpu().numpy()
 
 
 def hits_at(scores: torch.Tensor, k: int=5) -> float:
-    rank = (torch.argsort(scores, dim=0) == 0).nonzero()[:, 1]
-    if rank < k:
+    """ Tested | Accepts one (n,) tensor """
+    rank = (torch.argsort(scores, dim=0) == 0).nonzero()[0] + 1
+    print(rank)
+    if rank <= k:
         return 1.0
     else:
         return 0.0
