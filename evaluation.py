@@ -54,7 +54,7 @@ class EvaluationBench:
         self.model = model
 
         self.data_valid = data['valid']
-        self.hashes = self._index_pos_(np.append(data['train'], data['valid']))
+        self.hashes = self._index_pos_(np.append(data['train'], data['valid'], axis=0))
         self.n_entities = self.model.num_entities
         self.metrics = metrics
 
@@ -100,9 +100,9 @@ class EvaluationBench:
         else:
             hashes = {}, {}
             for triple in pos_data:
-                s, p, o, qp, qe = triple
+                s, p, o = triple[0], triple[1], triple[2]
                 hashes[0].setdefault((p, o), []).append(s)
-                hashes[1].setdefault([s, p], []).append(o)
+                hashes[1].setdefault((s, p), []).append(o)
 
         return hashes
 
