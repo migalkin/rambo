@@ -39,7 +39,7 @@ class EvaluationBench:
             data: Dict[str, Union[List[int], np.array]],
             model: nn.Module,
             bs: int,
-            metrics: dict = ('acc', 'mrr'),
+            metrics: list,
             _filtered: bool = False,
             _quints: bool = True):
         """
@@ -179,20 +179,19 @@ class EvaluationBench:
     def _summarize_metrics_(self, accumulated_metrics: np.array) -> np.array:
         """
             Aggregate metrics across time. Accepts np array of (len(self.data_valid), len(self.metrics))
-            Detecting partials based on https://stackoverflow.com/a/45485147
         """
         mean = np.mean(accumulated_metrics, axis=0)
         summary = {}
         for i, _metric in enumerate(self.metrics):
-            if isinstance(_metric, (types.FunctionType, partial)):
+            if _metric.__class__ is partial:
                 summary[_metric.func.__name__ + ' ' + str(_metric.keywords['k'])] = mean[i]
             else:
                 summary[_metric.__name__] = mean[i]
 
-         return summary
+        return summary
 
     @staticmethod
-    def summarize_run(self, summary: dict):
+    def summarize_run(summary: dict):
         """ Nicely print what just went down """
         print(f"This run over {summary['data_length']} {'quints' if summary['quints'] else 'triples'} took "
               f"%(time).3f min" % {'time': summary['time_taken']/60.0})
@@ -200,7 +199,7 @@ class EvaluationBench:
         for k,v in summary['metrics'].items():
             print(k, ':', "%(v).4f" % {'v': v})
 
-    def run(self):
+    def run(self, *args, **kwargs):
         """
             Calling this iterates through different data points, generates negatives, passes them to the model,
                 collects the scores, computes the metrics, and reports them.
@@ -218,7 +217,7 @@ class EvaluationBench:
                         scores = self.model.predict(x)
 
                 else:
-                    scores = np.array([])
+                    scores = torch.tensor([], dtype=torch.float, device=self.model.config['DEVICE'])
                     for i in range(neg.shape[0])[::self.bs]:  # Break it down into batches and then do dis
                         _neg = neg[i: i + self.bs]
                         if i == 0:
@@ -226,7 +225,9 @@ class EvaluationBench:
                                              device=self.model.config['DEVICE'])
                         else:
                             x = torch.tensor(_neg, dtype=torch.long, device=self.model.config['DEVICE'])
-                        scores = np.append(scores, self.model.predict(x))
+                        _scores = self.model.predict(x)
+                        # print(f"Org scores: {scores.shape}, {scores.device} | New scores: {_scores.shape}, {_scores.device}")
+                        scores = torch.cat((scores, _scores))
 
                 _metrics = self._compute_metric_(scores)
                 metrics.append(_metrics)
@@ -234,7 +235,6 @@ class EvaluationBench:
         # Spruce up the summary with more information
         time_taken = timer.interval
         metrics = self._summarize_metrics_(metrics)
-        del metrics # Clean up the memory
         summary = {'metrics': metrics, 'time_taken': time_taken, 'data_length': len(self.data_valid),
                    'quints': self.quints, 'filtered': self.filtered}
 
@@ -258,12 +258,38 @@ def mrr(scores: torch.Tensor) -> np.float:
 def hits_at(scores: torch.Tensor, k: int=5) -> float:
     """ Tested | Accepts one (n,) tensor """
     rank = (torch.argsort(scores, dim=0) == 0).nonzero()[0] + 1
-    print(rank)
+    # print(rank)
     if rank <= k:
         return 1.0
     else:
         return 0.0
 
+def evaluate_pointwise(pos_scores: torch.Tensor, neg_scores:torch.Tensor)->torch.Tensor:
+    """
+        Given a pos and neg quint, how many times did the score for positive be more than score for negative
+    
+        :param pos_scores: scores corresponding to pos quints (bs, )
+        :param neg_scores: scores corresponding to neg quints (bs, )
+        :return accuracy (0d tensor)
+    """
+    return torch.mean((pos_scores<neg_scores).float()).item()
+    
+def evaluate_dataset(scores:torch.Tensor):
+    """
+        Compute score for `bs` set of [pos, neg, neg .....] quints.
+        Assume pos is at the first position.
+        
+        
+        :param scores: torch tensor of scores (bs,neg_samples+1)
+        :returns (acc, mrr) both 1d tensors.
+    """
+    accuracy = (torch.argmin(scores, dim=1)==0).float()
+    ranks = (torch.argsort(scores, dim=1) == 0).nonzero()[:,1]
+    print(ranks)
+    recirank = 1.0/(ranks+1).float()
+    
+    return accuracy.detach().cpu().numpy(), recirank.detach().cpu().numpy()
+   
 
 if __name__ == "__main__":
     class DummyModel(nn.Module):

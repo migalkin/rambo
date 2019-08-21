@@ -92,13 +92,16 @@ class TransE(BaseModule):
         Modifications to use this to work with quints can be turned on/off with a flag.
     """
 
+    model_name = 'TransE MM'
+    
     def __init__(self, config) -> None:
-        super().__init__(config)
+        
 
         self.margin_ranking_loss_size_average: bool = True
         self.entity_embedding_max_norm: Optional[int] = None
         self.entity_embedding_norm_type: int = 2
         self.model_name = 'TransE MM'
+        super().__init__(config)
         self.quints = config['IS_QUINTS']
 
         # Embeddings
@@ -147,7 +150,7 @@ class TransE(BaseModule):
 
     def _score_triples(self, triples) -> torch.Tensor:
         """ Get triple/quint embeddings, and compute scores """
-        scores = self._compute_scores(self._get_triple_embeddings(triples))
+        scores = self._compute_scores(*self._get_triple_embeddings(triples))
         return scores
 
     def _compute_scores(self, head_embeddings, relation_embeddings, tail_embeddings,
