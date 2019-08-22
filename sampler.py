@@ -9,6 +9,8 @@ class SimpleSampler:
         self.bs = bs
         self.data = np.array(data) # pos data only motherfucker
 
+        self.shuffle()
+
     def shuffle(self):
         npr.shuffle(self.data)
 
