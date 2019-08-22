@@ -161,7 +161,6 @@ if __name__ == "__main__":
     class DummyModel(nn.Module):
         num_entities = 15000
 
-
     pos_data = np.random.randint(0, 15000, (400000, 5))
     pos_data_vl = np.random.randint(0, 15000, (400000, 5))
     data = {'train': pos_data, 'valid': pos_data_vl}

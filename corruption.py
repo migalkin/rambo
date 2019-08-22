@@ -88,6 +88,9 @@ class Corruption:
             corrupted[write_index: write_index+entities.shape[0], _position] = entities
             write_index += entities.shape[0]
 
+        # Take away orphaned rows from corrupted
+        corrupted = corruption[:write_index]
+
         return corrupted
 
     def _get_entities_(self, n: int, excluding: Union[int, np.array] = None,
