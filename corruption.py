@@ -22,7 +22,7 @@ class Corruption:
         **no filtering**
         gold_data = np.random.randint(0, 1000, (50, 3))
         corrupter = Corruption(n=1000, pos=[0, 2])
-        corrupter.corrupt(gold_data, pos=[0, 2])  # pos overrides
+        corrupter.corrupt_one(gold_data, pos=[0, 2])  # pos overrides
         corrupter.precomute(true, neg_per_samples=1000) (although not much point of this)
 
         **with filtering**
@@ -43,21 +43,22 @@ class Corruption:
         self.filtering = gold_data is not None
         self.hashes = self._index_(gold_data)
 
-    def _index_(self, data):
+    def _index_(self, data) -> Union[None, Dict[int, dict]]:
         """ Create hashes of trues"""
         if data is None: return None
 
-        hashes = [{} for _ in self.pos]
+        hashes = {pos: {} for pos in self.pos}
         for datum in data:
-            for _pos, _hash in zip(self.pos, hashes):
-                _remainder = datum.copy()
+            for _pos, _hash in hashes.items():
+                _remainder = list(datum.copy())
                 _real_val = _remainder.pop(_pos)
 
-                _hash.setdefault(_remainder, []).append(_real_val)
+                _hash.setdefault(tuple(_remainder), []).append(_real_val)
 
         return hashes
 
-    def _get_entities_(self, n: int, excluding: Union[int, np.array] = None, keys: np.array = None, data_hash: dict = None) -> np.array:
+    def _get_entities_(self, n: int, excluding: Union[int, np.array] = None,
+                       keys: np.array = None, data_hash: dict = None) -> np.array:
         """
             Step 1: Create random entities (n times)
             Step 2: If not filtering and excluding, a while loop to ensure all are replaced
@@ -105,9 +106,9 @@ class Corruption:
 
         return entities
 
-    def corrupt(self, data: np.array , pos=None) -> np.array:
+    def corrupt_one(self, data: np.array , pos=None) -> np.array:
         """
-            For corrupting one true data point, every possible manner
+            For corrupting one true data point, every possible manner.
         :param data: np.array of that which needs all forms of corruption
         :param pos: optional param which specifies the positions to corrupt
         :return: np.array of (n, _) where n is num of corrupted things
@@ -115,13 +116,28 @@ class Corruption:
         pos = self.pos if pos is None else pos
         write_index = 0
 
-        # Get a n_ent * len(pos) array
+        # Get a n_ent * len(pos)-1 array
         corrupted = np.zeros((len(pos) * (self.n-1), len(data)))
 
-        # @TODO: complete this. too sleepy
+        # For each position in pos
+        for _pos in pos:
 
-        return None
+            # Get entities to exclude at this position
+            key = list(data).copy()
+            excluding = [key.pop(_pos)]
 
+            if self.filtering:
+                excluding += self.hashes[_pos][tuple(key)]
+
+            excluding = np.array(excluding)
+            entities = np.delete(np.arange(self.n), excluding)
+
+            # Inject in the zero arr
+            corrupted[write_index: write_index+entities.shape[0], :] = data
+            corrupted[write_index: write_index+entities.shape[0], _pos] = entities
+            write_index += entities.shape[0]
+
+        return corrupted
 
     def corrupt_batch(self, data: np.array, pos=None):
         """
@@ -140,27 +156,19 @@ class Corruption:
             neg_data[write_index: write_index+_data.shape[0], _pos] = entities
             write_index += _data.shape[0]
 
+        return neg_data
+
 
 if __name__ == "__main__":
-    # Just checking things
-    probs = [0.3, 0.0, 0.3, 0.4]
-    q_neg = sample_negatives(raw_data[0], probs)
-    print(q_neg)
 
-    l = np.random.choice(["s", "p", "o", "q"], 1000, p=probs)
-    print(l[0])
-    unique, counts = np.unique(l, return_counts=True)
-    dict(zip(unique, counts))
-    # l.count("s"), l.count("p"), l.count("o"), l.count("q")
+    # Testing Corruption class
+    true = np.random.randint(0, 20, (20000, 5))
+    true[2] = true[1].copy()
+    true[2][-1] = 99
+    corruption = Corruption(20000, [0, 2], true, False)
+    one_pos = true[10]
+    print(one_pos)
 
-    negative_samples = []
-    for q in tqdm(raw_data):
-        negative_samples.append(sample_negatives(q, probs))
-
-    count = 0
-    for n in tqdm(negative_samples):
-        if n in raw_data:
-            print(n)
-            count += 1
-
-    print(f"{count} / {len(raw_data)} are not unique negatives")
+    neg = corruption.corrupt_one(one_pos)
+    print(neg[:10])
+    print(neg.shape)
