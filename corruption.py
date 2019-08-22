@@ -57,7 +57,7 @@ class Corruption:
 
         return hashes
 
-    def corrupt_one(self, data: np.array , position=None) -> np.array:
+    def corrupt_one(self, data: np.array, position=None) -> np.array:
         """
             For corrupting one true data point, every possible manner.
         :param data: np.array of that which needs all forms of corruption

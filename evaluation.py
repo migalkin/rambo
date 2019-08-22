@@ -130,7 +130,7 @@ def hits_at(scores: torch.Tensor, k: int = 5) -> float:
         return 0.0
 
 
-def evaluate_pointwise(pos_scores: torch.Tensor, neg_scores: torch.Tensor) -> torch.Tensor:
+def evaluate_pointwise(pos_scores: torch.Tensor, neg_scores: torch.Tensor) -> Union[int, float, bool]:
     """
         Given a pos and neg quint, how many times did the score for positive be more than score for negative
 
