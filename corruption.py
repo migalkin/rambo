@@ -7,81 +7,176 @@ from tqdm import tqdm_notebook as tqdm
 from utils import *
 
 
-def sample_negatives(quint: Quint, probs: List[float]) -> Quint:
-    """ probs: [ p(s), p(r), p(o), p(q) ] """
-    assert np.sum(probs) == 1.0
-    assert len(probs) == 4
-    # print(probs)
-    l = np.random.choice(["s", "p", "o", "q"], 1, p=probs)
-    if l[0] == "s":
-        return Quint(s=random.choice(entities), p=quint[1], o=quint[2], qp=quint[3], qe=quint[4])
-    #         while True:
-    #             new_s = random.choice(entities)
-    #             q = Quint(s=new_s, p=quint[1], o=quint[2], qp=quint[3], qe=quint[4])
-    #             if q not in raw_data:
-    #                 return q
-    elif l[0] == "p":
-        return Quint(s=quint[0], p=random.choice(predicates), o=quint[2], qp=quint[3], qe=quint[4])
-    #         while True:
-    #             new_p = random.choice(predicates)
-    #             q = Quint(s=quint[0], p=new_p, o=quint[2], qp=quint[3], qe=quint[4])
-    #             if q not in raw_data:
-    #                 return q
-    elif l[0] == "o":
-        return Quint(s=quint[0], p=quint[1], o=random.choice(entities), qp=quint[3], qe=quint[4])
-    #         while True:
-    #             new_o = random.choice(entities)
-    #             q = Quint(s=quint[0], p=quint[1], o=new_o, qp=quint[3], qe=quint[4])
-    #             if q not in raw_data:
-    #                 return q
-    elif l[0] == "q":
-        if quint[3]:
-            if np.random.random() > 0.5:
-                # sample qp
-                return Quint(s=quint[0], p=quint[1], o=quint[2], qp=random.choice(predicates), qe=quint[4])
-            #                 while True:
-            #                     qp = random.choice(predicates)
-            #                     q = Quint(s=quint[0], p=quint[1], o=quint[2], qp=qp, qe=quint[4])
-            #                     if q not in raw_data:
-            #                         return q
-            else:
-                return Quint(s=quint[0], p=quint[1], o=quint[2], qp=quint[3], qe=random.choice(entities))
-        #                 while True:
-        #                     qe = random.choice(entities)
-        #                     q = Quint(s=quint[0], p=quint[1], o=quint[2], qp=quint[3], qe=qe)
-        #                     if q not in raw_data:
-        #                         return q
-        else:
-            return Quint(s=quint[0], p=quint[1], o=quint[2], qp=random.choice(predicates), qe=random.choice(entities))
+class Corruption:
+    """
 
+        Used to efficiently corrupt given data.
 
-#             while True:
-#                 qp = random.choice(predicates)
-#                 qe = random.choice(entities)
-#                 q = Quint(s=quint[0], p=quint[1], o=quint[2], qp=qp, qe=qe)
-#                 if q not in raw_data:
-#                     return q
+        # Usage
+        |-> If no filtering is needed (neg may exist in dataset)
+            |-> simply init the class with n_ents, and call corrupt with pos data, and num corruptions
+        |-> If filtering is needed (neg must not belong in dataset)
+            |-> also pass all true data while init
+
+        # Usage Example
+        **no filtering**
+        gold_data = np.random.randint(0, 1000, (50, 3))
+        corrupter = Corruption(n=1000, position=[0, 2])
+        corrupter.corrupt_one(gold_data, position=[0, 2])  # position overrides
+        corrupter.precomute(true, neg_per_samples=1000) (although not much point of this)
+
+        **with filtering**
+        gold_data =  np.random.randint(0, 1000, (50, 3))
+        corrupter = Corruption(n=1000, data=gold_data, position=[0, 2])
+        corrupter.corrupt(gold_data, position=[0, 2]) # position overrides
+
+        # Features
+        - Precompute (not sure if we'll do this)
+        - Filtering
+        - Can return in pairwise fashion
+            (p,n) pairs with repeated p's if needed
+    """
+
+    def __init__(self, n, position: list = None, gold_data: np.array = None, debug: bool = False):
+        self.n = n
+        self.position, self.debug = position, debug
+        self.filtering = gold_data is not None
+        self.hashes = self._index_(gold_data)
+
+    def _index_(self, data) -> Union[None, Dict[int, dict]]:
+        """ Create hashes of trues"""
+        if data is None: return None
+
+        hashes = {pos: {} for pos in self.position}
+        for datum in data:
+            for _pos, _hash in hashes.items():
+                _remainder = list(datum.copy())
+                _real_val = _remainder.pop(_pos)
+
+                _hash.setdefault(tuple(_remainder), []).append(_real_val)
+
+        return hashes
+
+    def corrupt_one(self, data: np.array , position=None) -> np.array:
+        """
+            For corrupting one true data point, every possible manner.
+        :param data: np.array of that which needs all forms of corruption
+        :param pos: optional param which specifies the positions to corrupt
+        :return: np.array of (n, _) where n is num of corrupted things
+        """
+        position = self.position if position is None else position
+        write_index = 0
+
+        # Get a n_ent * len(position)-1 array
+        corrupted = np.zeros((len(position) * (self.n-1), len(data)))
+
+        # For each position in position
+        for _position in position:
+
+            # Get entities to exclude at this position
+            key = list(data).copy()
+            excluding = [key.pop(_position)]
+
+            if self.filtering:
+                excluding += self.hashes[_position][tuple(key)]
+
+            excluding = np.array(excluding)
+            entities = np.delete(np.arange(self.n), excluding)
+
+            # Inject in the zero arr
+            corrupted[write_index: write_index+entities.shape[0], :] = data
+            corrupted[write_index: write_index+entities.shape[0], _position] = entities
+            write_index += entities.shape[0]
+
+        # Take away orphaned rows from corrupted
+        corrupted = corruption[:write_index]
+
+        return corrupted
+
+    def _get_entities_(self, n: int, excluding: Union[int, np.array] = None,
+                       keys: np.array = None, data_hash: dict = None) -> np.array:
+        """
+            Step 1: Create random entities (n times)
+            Step 2: If not filtering and excluding, a while loop to ensure all are replaced
+            Step 3: If filtering, then we verify if the ent has not appeared in the dataset
+
+        :param n: number of things to inflect
+        :param excluding:
+            - int - don't have this entity
+            - np.array - don't have these entities AT THESE POSITIONs
+        :param keys: complete data used for filtering
+        :param data_hash: the data hash we're using to do the filtering
+        :return: (n,) entities
+        """
+
+        # Step 1
+        entities = np.random.permutation(np.arange(self.n))[:n]
+
+        # Step 2
+        if excluding is not None and not self.filtering:
+
+            # If excluding is single
+            if type(excluding) in [int, float]:
+                excluding = np.repeat(excluding, n)
+
+            if self.debug:
+                repeats = 0
+
+            while True:
+                eq = entities == excluding
+                if not eq.any():
+                    # If they're completely dissimilar
+                    break
+                new_entities = np.random.choice(np.arange(n), int(np.sum(eq)))
+                entities[eq] = new_entities
+
+                if self.debug:
+                    repeats += 1
+
+        if self.debug:
+            print(f"Corruption: The excluding loop went for {repeats} times.")
+
+        # Step 3
+        if self.filtering:
+            # @TODO: later alligator
+            raise NotImplementedError
+
+        return entities
+
+    def corrupt_batch(self, data: np.array, position=None):
+        """
+            For each positions in data, make inflections. n_infl = len(data) // len(position)
+            Returns (pos, neg) pairs
+        """
+        position = self.position if position is None else position
+
+        split_data = np.array_split(data, len(position))
+        neg_data = np.copy(data)
+
+        write_index = 0
+        for i, (_position, _data) in enumerate(zip(position, split_data)):
+
+            entities = self._get_entities_(_data.shape[0], excluding=_data[_position, :])
+            neg_data[write_index: write_index+_data.shape[0], _position] = entities
+            write_index += _data.shape[0]
+
+        return neg_data
+
 
 if __name__ == "__main__":
-    # Just checking things
-    probs = [0.3, 0.0, 0.3, 0.4]
-    q_neg = sample_negatives(raw_data[0], probs)
-    print(q_neg)
 
-    l = np.random.choice(["s", "p", "o", "q"], 1000, p=probs)
-    print(l[0])
-    unique, counts = np.unique(l, return_counts=True)
-    dict(zip(unique, counts))
-    # l.count("s"), l.count("p"), l.count("o"), l.count("q")
+    # Testing Corruption class
+    true = np.random.randint(0, 20, (20000, 5))
+    true[2] = true[1].copy()
+    true[2][-1] = 99
+    corruption = Corruption(20, [0, 2])
+    one_pos = true[10]
+    # print(one_pos)
 
-    negative_samples = []
-    for q in tqdm(raw_data):
-        negative_samples.append(sample_negatives(q, probs))
+    neg = corruption.corrupt_one(one_pos)
+    print(neg[:10])
+    print(neg.shape)
 
-    count = 0
-    for n in tqdm(negative_samples):
-        if n in raw_data:
-            print(n)
-            count += 1
-
-    print(f"{count} / {len(raw_data)} are not unique negatives")
+    batch = np.random.permutation(true)[:10]
+    n = corruption.corrupt_batch(batch)
+    print(n.shape)
