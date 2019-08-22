@@ -89,7 +89,7 @@ class Corruption:
             write_index += entities.shape[0]
 
         # Take away orphaned rows from corrupted
-        corrupted = corruption[:write_index]
+        corrupted = corrupted[:write_index]
 
         return corrupted
 
@@ -148,15 +148,17 @@ class Corruption:
             For each positions in data, make inflections. n_infl = len(data) // len(position)
             Returns (pos, neg) pairs
         """
+
         position = self.position if position is None else position
 
         split_data = np.array_split(data, len(position))
         neg_data = np.copy(data)
 
         write_index = 0
-        for i, (_position, _data) in enumerate(zip(position, split_data)):
+        for i, _data in enumerate(split_data):
+            _position = position[i]
 
-            entities = self._get_entities_(_data.shape[0], excluding=_data[_position, :])
+            entities = self._get_entities_(_data.shape[0], excluding=_data[:, _position])
             neg_data[write_index: write_index+_data.shape[0], _position] = entities
             write_index += _data.shape[0]
 
@@ -166,7 +168,7 @@ class Corruption:
 if __name__ == "__main__":
 
     # Testing Corruption class
-    true = np.random.randint(0, 20, (20000, 5))
+    true = np.random.randint(0, 20, (20000, 3))
     true[2] = true[1].copy()
     true[2][-1] = 99
     corruption = Corruption(20, [0, 2])
@@ -177,6 +179,8 @@ if __name__ == "__main__":
     print(neg[:10])
     print(neg.shape)
 
-    batch = np.random.permutation(true)[:10]
+    batch = np.random.permutation(true)[:5]
+    print('------')
+    print(batch.shape)
     n = corruption.corrupt_batch(batch)
     print(n.shape)
