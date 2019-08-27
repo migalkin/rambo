@@ -2,6 +2,7 @@ git clone https://github.com/geraltofrivia/mytorch.git
 cd mytorch
 chmod +x setup.sh
 ./setup.sh
+cd ..
 
 mkdir data/parsed_data
 mkdir data/pre_training_data
@@ -17,3 +18,6 @@ git clone https://github.com/thunlp/OpenKE.git
 # for dataset - WikiPeople
 # git clone ___
 # run script.
+
+echo "We're done pulling data. Now lets run a data parser to be on our toes."
+python raw_parser

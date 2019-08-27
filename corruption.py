@@ -37,11 +37,16 @@ class Corruption:
             (p,n) pairs with repeated p's if needed
     """
 
-    def __init__(self, n, position: list = None, gold_data: np.array = None, debug: bool = False):
+    def __init__(self, n, position: list = None, gold_data: np.array = None,
+                 debug: bool = False, caching: bool = False):
         self.n = n
         self.position, self.debug = position, debug
         self.filtering = gold_data is not None
         self.hashes = self._index_(gold_data)
+
+        self.caching = caching
+        if caching:
+            ...
 
     def _index_(self, data) -> Union[None, Dict[int, dict]]:
         """ Create hashes of trues"""

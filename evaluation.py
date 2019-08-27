@@ -108,6 +108,15 @@ class EvaluationBench:
 
         return summary
 
+    def run_faster(self, *args, **kwargs):
+        """
+            Similar to run but tries to put multiple pos in one batch if permitted by bs
+            TODO
+        :param args:
+        :param kwargs:
+        :return:
+        """
+        ...
 
 def acc(scores: torch.Tensor) -> np.float:
     """ Accepts a (n, ) tensor """
