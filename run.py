@@ -26,7 +26,7 @@ from evaluation import EvaluationBench, acc, mrr, hits_at, evaluate_pointwise
 from models import TransE
 from corruption import Corruption
 from sampler import SimpleSampler
-from training import training_loop
+from loops import training_loop
 
 """
     CONFIG Things

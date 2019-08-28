@@ -14,7 +14,7 @@ class EvaluationBench:
     """
 
     def __init__(self, data: Dict[str, Union[List[int], np.array]], model: nn.Module,
-                 bs: int, metrics: list, _filtered: bool = False):
+                 bs: int, metrics: list, _filtered: bool = False, trim: float = None):
         """
             :param data: {'train': list/iter of positive triples, 'valid': list/iter of positive triples}.
             Np array are appreciated
@@ -34,6 +34,10 @@ class EvaluationBench:
         # Create a corruption object
         self.corrupter = Corruption(n=self.model.num_entities, position=self.corruption_positions, debug=False,
                                     gold_data=np.vstack((data['train'], data['valid'])) if self.filtered else None)
+
+        if trim is not None:
+            assert trim <= 1.0, "Trim ratio can not be more than 1.0"
+            self.data_valid = np.random.permutation(self.data_valid)[:int(trim*len(self.data_valid))]
 
     def reset(self):
         """ Call when you wanna run again but not change hashes etc """
@@ -76,33 +80,36 @@ class EvaluationBench:
         metrics = []
 
         with Timer() as timer:
-            for positive_data in tqdm(self.data_valid):
+            with torch.no_grad():
+                for positive_data in tqdm(self.data_valid):
 
-                # Same pos data will be looped over for each position, its result stored separately
-                for position in self.corruption_positions:
+                    # Same pos data will be looped over for each position, its result stored separately
+                    for position in self.corruption_positions:
 
-                    neg = self.corrupter.corrupt_one_position(positive_data, position)
+                        neg = self.corrupter.corrupt_one_position(positive_data, position)
 
-                    if len(neg) + 1 < self.bs:  # Can do it in one iteration
-                        with torch.no_grad():
+                        if len(neg) + 1 < self.bs:  # Can do it in one iteration
+
                             x = torch.tensor(np.vstack((positive_data.transpose(), neg)), dtype=torch.long,
                                              device=self.model.config['DEVICE'])
                             scores = self.model.predict(x)
 
-                    else:
-                        scores = torch.tensor([], dtype=torch.float, device=self.model.config['DEVICE'])
-                        for i in range(neg.shape[0])[::self.bs]:  # Break it down into batches and then do dis
-                            _neg = neg[i: i + self.bs]
-                            if i == 0:
-                                x = torch.tensor(np.vstack((positive_data.transpose(), _neg)), dtype=torch.long,
-                                                 device=self.model.config['DEVICE'])
-                            else:
-                                x = torch.tensor(_neg, dtype=torch.long, device=self.model.config['DEVICE'])
-                            _scores = self.model.predict(x)
-                            scores = torch.cat((scores, _scores))
+                        else:
+                            scores = torch.tensor([], dtype=torch.float, device=self.model.config['DEVICE'])
 
-                    _metrics = self._compute_metric_(scores)
-                    metrics.append(_metrics)
+                            for i in range(neg.shape[0])[::self.bs]:  # Break it down into batches and then do dis
+                                _neg = neg[i: i + self.bs]
+                                if i == 0:
+                                    x = torch.tensor(np.vstack((positive_data.transpose(), _neg)), dtype=torch.long,
+                                                     device=self.model.config['DEVICE'])
+                                else:
+                                    x = torch.tensor(_neg, dtype=torch.long, device=self.model.config['DEVICE'])
+                                _scores = self.model.predict(x)
+
+                                scores = torch.cat((scores, _scores))
+
+                        _metrics = self._compute_metric_(scores)
+                        metrics.append(_metrics)
 
         # Spruce up the summary with more information
         time_taken = timer.interval

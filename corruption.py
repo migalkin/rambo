@@ -2,7 +2,7 @@ import pickle
 from typing import List
 import numpy as np
 import random
-from tqdm import tqdm_notebook as tqdm
+from tqdm.autonotebook import tqdm
 
 from utils import *
 
