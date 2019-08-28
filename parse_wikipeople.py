@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 import pickle
-from raw_parser import Quint
+from parse_wd15k import Quint
 
 def parse_wikipeople():
     """

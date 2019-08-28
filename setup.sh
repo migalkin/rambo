@@ -20,4 +20,4 @@ git clone https://github.com/thunlp/OpenKE.git
 # run script.
 
 echo "We're done pulling data. Now lets run a data parser to be on our toes."
-python raw_parser
+python parse_wd15k.py

@@ -118,6 +118,7 @@ class EvaluationBench:
         """
         ...
 
+
 def acc(scores: torch.Tensor) -> np.float:
     """ Accepts a (n, ) tensor """
     return (torch.argmin(scores, dim=0) == 0).float().detach().cpu().numpy()
