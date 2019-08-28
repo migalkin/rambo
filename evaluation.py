@@ -83,6 +83,8 @@ class EvaluationBench:
             with torch.no_grad():
                 for positive_data in tqdm(self.data_valid):
 
+                    metric_across_positions = []
+
                     # Same pos data will be looped over for each position, its result stored separately
                     for position in self.corruption_positions:
 
@@ -109,8 +111,9 @@ class EvaluationBench:
                                 scores = torch.cat((scores, _scores))
 
                         _metrics = self._compute_metric_(scores)
-                        metrics.append(_metrics)
+                        metric_across_positions.append(_metrics)
 
+                metrics.append(np.mean(metric_across_positions, axis=0))
         # Spruce up the summary with more information
         time_taken = timer.interval
         metrics = self._summarize_metrics_(metrics)
@@ -134,20 +137,20 @@ class EvaluationBench:
 
 def acc(scores: torch.Tensor) -> np.float:
     """ Accepts a (n, ) tensor """
-    return (torch.argmin(scores, dim=0) == 0).float().detach().cpu().numpy()
+    return (torch.argmin(scores, dim=0) == 0).float().detach().cpu().numpy().item()
 
 
 def mrr(scores: torch.Tensor) -> np.float:
     """ Tested | Accepts one (n,) tensor """
     ranks = (torch.argsort(scores, dim=0) == 0).nonzero()[0]
     recirank = 1.0 / (ranks + 1).float()
-    return recirank.detach().cpu().numpy()
+    return recirank.detach().cpu().numpy().item()
 
 
 def mr(scores: torch.Tensor) -> np.float:
     """ Tested | Accepts one (n,) tensor """
     ranks = (torch.argsort(scores, dim=0) == 0).nonzero()[0]
-    return ranks.detach().cpu().numpy()
+    return ranks.detach().cpu().numpy().item()
 
 
 def hits_at(scores: torch.Tensor, k: int = 5) -> float:

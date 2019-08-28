@@ -5,7 +5,7 @@ import pandas as pd
 from pathlib import Path
 from collections import namedtuple
 Quint = namedtuple('Quint', 's p o qp qe')
-RAW_DATA_DIR = Path('./data/raw_data')
+RAW_DATA_DIR = Path('./data/raw_data/wd15k')
 PARSED_DATA_DIR = Path('./data/parsed_data')
 PRETRAINING_DATA_DIR = Path('./data/pre_training_data')
 
