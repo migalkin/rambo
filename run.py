@@ -22,7 +22,7 @@ from mytorch import dataiters
 # Local imports
 from parse_wd15k import Quint
 from utils import *
-from evaluation import EvaluationBench, acc, mrr, hits_at, evaluate_pointwise
+from evaluation import EvaluationBench, acc, mrr, mr, hits_at, evaluate_pointwise
 from models import TransE
 from corruption import Corruption
 from sampler import SimpleSampler
@@ -38,19 +38,19 @@ np.random.seed(42)
 random.seed(42)
 
 EXPERIMENT_CONFIG = {
-    'EMBEDDING_DIM': 200,
+    'EMBEDDING_DIM': 50,
     'NORM_FOR_NORMALIZATION_OF_ENTITIES': 2,
     'NORM_FOR_NORMALIZATION_OF_RELATIONS': 2,
     'SCORING_FUNCTION_NORM': 1,
     'MARGIN_LOSS': 1,
-    'LEARNING_RATE': 0.001,
+    'LEARNING_RATE': 0.01,
     'NEGATIVE_SAMPLING_PROBS': [0.3, 0.0, 0.2, 0.5],
     'NEGATIVE_SAMPLING_TIMES': 10,
-    'BATCH_SIZE': 5,
-    'EPOCHS': 100,
+    'BATCH_SIZE': 64,
+    'EPOCHS': 200,
     'IS_QUINTS': False,
-    'EVAL_EVERY': 20,
-    'WANDB': True,
+    'EVAL_EVERY': 10,
+    'WANDB': False,
     'RUN_TESTBENCH_ON_TRAIN': True
 }
 
@@ -111,9 +111,9 @@ if __name__ == "__main__":
     data = {'train': np.array(training_triples), 'valid': np.array(valid_triples)}
     _data = {'train': np.array(valid_triples), 'valid': np.array(training_triples)}
 
-    eval_metrics = [acc, mrr, partial(hits_at, k=3), partial(hits_at, k=5), partial(hits_at, k=10)]
-    evaluation_valid = EvaluationBench(data, model, config["BATCH_SIZE"], metrics=eval_metrics, _filtered=True)
-    evaluation_train = EvaluationBench(_data, model, config["BATCH_SIZE"], metrics=eval_metrics, _filtered=True)
+    eval_metrics = [acc, mrr, mr, partial(hits_at, k=3), partial(hits_at, k=5), partial(hits_at, k=10)]
+    evaluation_valid = EvaluationBench(data, model, 8000, metrics=eval_metrics, _filtered=True)
+    evaluation_train = EvaluationBench(_data, model, 8000, metrics=eval_metrics, _filtered=True, trim=0.01)
 
     args = {
         "epochs": config['EPOCHS'],

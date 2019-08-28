@@ -144,6 +144,12 @@ def mrr(scores: torch.Tensor) -> np.float:
     return recirank.detach().cpu().numpy()
 
 
+def mr(scores: torch.Tensor) -> np.float:
+    """ Tested | Accepts one (n,) tensor """
+    ranks = (torch.argsort(scores, dim=0) == 0).nonzero()[0]
+    return ranks.detach().cpu().numpy()
+
+
 def hits_at(scores: torch.Tensor, k: int = 5) -> float:
     """ Tested | Accepts one (n,) tensor """
     rank = (torch.argsort(scores, dim=0) == 0).nonzero()[0] + 1
