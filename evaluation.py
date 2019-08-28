@@ -29,10 +29,10 @@ class EvaluationBench:
 
         # Find the kind of data we're dealing with
         self.max_len_data = max(data['train'].shape[1], data['valid'].shape[1])
-        pos = list(range(0, self.max_len_data, 2))
+        self.corruption_positions = list(range(0, self.max_len_data, 2))
 
         # Create a corruption object
-        self.corrupter = Corruption(n=self.model.num_entities, position=pos, debug=False,
+        self.corrupter = Corruption(n=self.model.num_entities, position=self.corruption_positions, debug=False,
                                     gold_data=np.vstack((data['train'], data['valid'])) if self.filtered else None)
 
     def reset(self):
@@ -70,33 +70,39 @@ class EvaluationBench:
         """
             Calling this iterates through different data points, generates negatives, passes them to the model,
                 collects the scores, computes the metrics, and reports them.
+
+            Update: run functino now actually goes over only
         """
         metrics = []
 
         with Timer() as timer:
             for positive_data in tqdm(self.data_valid):
-                neg = self.corrupter.corrupt_one(positive_data)
 
-                if len(neg) + 1 < self.bs:  # Can do it in one iteration
-                    with torch.no_grad():
-                        x = torch.tensor(np.vstack((positive_data.transpose(), neg)), dtype=torch.long,
-                                         device=self.model.config['DEVICE'])
-                        scores = self.model.predict(x)
+                # Same pos data will be looped over for each position, its result stored separately
+                for position in self.corruption_positions:
 
-                else:
-                    scores = torch.tensor([], dtype=torch.float, device=self.model.config['DEVICE'])
-                    for i in range(neg.shape[0])[::self.bs]:  # Break it down into batches and then do dis
-                        _neg = neg[i: i + self.bs]
-                        if i == 0:
-                            x = torch.tensor(np.vstack((positive_data.transpose(), _neg)), dtype=torch.long,
+                    neg = self.corrupter.corrupt_one_position(positive_data, position)
+
+                    if len(neg) + 1 < self.bs:  # Can do it in one iteration
+                        with torch.no_grad():
+                            x = torch.tensor(np.vstack((positive_data.transpose(), neg)), dtype=torch.long,
                                              device=self.model.config['DEVICE'])
-                        else:
-                            x = torch.tensor(_neg, dtype=torch.long, device=self.model.config['DEVICE'])
-                        _scores = self.model.predict(x)
-                        scores = torch.cat((scores, _scores))
+                            scores = self.model.predict(x)
 
-                _metrics = self._compute_metric_(scores)
-                metrics.append(_metrics)
+                    else:
+                        scores = torch.tensor([], dtype=torch.float, device=self.model.config['DEVICE'])
+                        for i in range(neg.shape[0])[::self.bs]:  # Break it down into batches and then do dis
+                            _neg = neg[i: i + self.bs]
+                            if i == 0:
+                                x = torch.tensor(np.vstack((positive_data.transpose(), _neg)), dtype=torch.long,
+                                                 device=self.model.config['DEVICE'])
+                            else:
+                                x = torch.tensor(_neg, dtype=torch.long, device=self.model.config['DEVICE'])
+                            _scores = self.model.predict(x)
+                            scores = torch.cat((scores, _scores))
+
+                    _metrics = self._compute_metric_(scores)
+                    metrics.append(_metrics)
 
         # Spruce up the summary with more information
         time_taken = timer.interval

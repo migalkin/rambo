@@ -62,11 +62,38 @@ class Corruption:
 
         return hashes
 
+    def corrupt_one_position(self, data: np.array, position: int) -> np.array:
+        """
+            Similar to corrupt_one but only generates negatives for a specific position.
+
+        :param data: np.array of that which needs all forms of corruption
+        :param position: the position for which we need to make the corruption
+        :return: numpy array of corrupted things
+        """
+        assert position in self.position,  "Invalid corruption position provided"
+
+        # Get entities to exclude at this position
+        key = list(data).copy()
+        excluding = [key.pop(position)]
+
+        if self.filtering:
+            excluding += self.hashes[position][tuple(key)]
+
+        excluding = np.array(excluding)
+        entities = np.delete(np.arange(self.n), excluding)
+
+        corrupted = np.zeros((entities.shape[0], len(data)))
+        corrupted[:, :] = data
+        corrupted[:, position] = entities
+        return corrupted
+
     def corrupt_one(self, data: np.array, position=None) -> np.array:
         """
+            NO Longer used
+
             For corrupting one true data point, every possible manner.
         :param data: np.array of that which needs all forms of corruption
-        :param pos: optional param which specifies the positions to corrupt
+        :param position: optional param which specifies the positions to corrupt
         :return: np.array of (n, _) where n is num of corrupted things
         """
         position = self.position if position is None else position
