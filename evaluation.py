@@ -113,7 +113,7 @@ class EvaluationBench:
                         _metrics = self._compute_metric_(scores)
                         metric_across_positions.append(_metrics)
 
-                metrics.append(np.mean(metric_across_positions, axis=0))
+                    metrics.append(np.mean(metric_across_positions, axis=0))
         # Spruce up the summary with more information
         time_taken = timer.interval
         metrics = self._summarize_metrics_(metrics)
