@@ -11,6 +11,7 @@ import sys
 from mytorch.utils.goodies import *
 
 # Local imports
+from parse_wd15k import Quint
 from utils import *
 from evaluation import EvaluationBench, acc, mrr, mr, hits_at, evaluate_pointwise
 from models import TransE
@@ -44,15 +45,18 @@ DEFAULT_CONFIG = {
     'RUN_TESTBENCH_ON_TRAIN': True
 }
 
-
 if __name__ == "__main__":
 
     # Get parsed arguments
     parsed_args = parse_args(sys.argv[1:])
 
     # Superimpose this on default config
-    for k,v in parsed_args.items():
-        DEFAULT_CONFIG[k.upper()] = v
+    for k, v in parsed_args.items():
+        if k not in DEFAULT_CONFIG.keys():
+            DEFAULT_CONFIG[k.upper()] = v
+        else:
+            needed_type = type(DEFAULT_CONFIG[k.upper()])
+            DEFAULT_CONFIG[k.upper()] = needed_type(v)
 
     RAW_DATA_DIR = Path('./data/raw_data/fb15k237')
     DATASET = 'fb15k237'
@@ -134,6 +138,3 @@ if __name__ == "__main__":
 
     with open('traces.pkl', 'wb+') as f:
         pickle.dump(traces, f)
-
-
-
