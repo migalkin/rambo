@@ -50,6 +50,8 @@ if __name__ == "__main__":
     # Get parsed arguments
     parsed_args = parse_args(sys.argv[1:])
 
+    print(parsed_args)
+
     # Superimpose this on default config
     for k, v in parsed_args.items():
         if k not in DEFAULT_CONFIG.keys():
