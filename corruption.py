@@ -1,0 +1,218 @@
+import pickle
+from typing import List
+import numpy as np
+import random
+from tqdm.autonotebook import tqdm
+
+from utils import *
+
+
+class Corruption:
+    """
+
+        Used to efficiently corrupt given data.
+
+        # Usage
+        |-> If no filtering is needed (neg may exist in dataset)
+            |-> simply init the class with n_ents, and call corrupt with pos data, and num corruptions
+        |-> If filtering is needed (neg must not belong in dataset)
+            |-> also pass all true data while init
+
+        # Usage Example
+        **no filtering**
+        gold_data = np.random.randint(0, 1000, (50, 3))
+        corrupter = Corruption(n=1000, position=[0, 2])
+        corrupter.corrupt_one(gold_data, position=[0, 2])  # position overrides
+        corrupter.precomute(true, neg_per_samples=1000) (although not much point of this)
+
+        **with filtering**
+        gold_data =  np.random.randint(0, 1000, (50, 3))
+        corrupter = Corruption(n=1000, data=gold_data, position=[0, 2])
+        corrupter.corrupt(gold_data, position=[0, 2]) # position overrides
+
+        # Features
+        - Precompute (not sure if we'll do this)
+        - Filtering
+        - Can return in pairwise fashion
+            (p,n) pairs with repeated p's if needed
+    """
+
+    def __init__(self, n, position: list = None, gold_data: np.array = None,
+                 debug: bool = False, caching: bool = False):
+        self.n = n
+        self.position, self.debug = position, debug
+        self.filtering = gold_data is not None
+        self.hashes = self._index_(gold_data)
+
+        self.caching = caching
+        if caching:
+            ...
+
+    def _index_(self, data) -> Union[None, Dict[int, dict]]:
+        """ Create hashes of trues"""
+        if data is None: return None
+
+        hashes = {pos: {} for pos in self.position}
+        for datum in data:
+            for _pos, _hash in hashes.items():
+                _remainder = list(datum.copy())
+                _real_val = _remainder.pop(_pos)
+
+                _hash.setdefault(tuple(_remainder), []).append(_real_val)
+
+        return hashes
+
+    def corrupt_one_position(self, data: np.array, position: int) -> np.array:
+        """
+            Similar to corrupt_one but only generates negatives for a specific position.
+
+        :param data: np.array of that which needs all forms of corruption
+        :param position: the position for which we need to make the corruption
+        :return: numpy array of corrupted things
+        """
+        assert position in self.position,  "Invalid corruption position provided"
+
+        # Get entities to exclude at this position
+        key = list(data).copy()
+        excluding = [key.pop(position)]
+
+        if self.filtering:
+            excluding += self.hashes[position][tuple(key)]
+
+        excluding = np.array(excluding)
+        entities = np.delete(np.arange(self.n), excluding)
+
+        corrupted = np.zeros((entities.shape[0], len(data)))
+        corrupted[:, :] = data
+        corrupted[:, position] = entities
+        return corrupted
+
+    def corrupt_one(self, data: np.array, position=None) -> np.array:
+        """
+            NO Longer used
+
+            For corrupting one true data point, every possible manner.
+        :param data: np.array of that which needs all forms of corruption
+        :param position: optional param which specifies the positions to corrupt
+        :return: np.array of (n, _) where n is num of corrupted things
+        """
+        position = self.position if position is None else position
+        write_index = 0
+
+        # Get a n_ent * len(position)-1 array
+        corrupted = np.zeros((len(position) * (self.n-1), len(data)))
+
+        # For each position in position
+        for _position in position:
+
+            # Get entities to exclude at this position
+            key = list(data).copy()
+            excluding = [key.pop(_position)]
+
+            if self.filtering:
+                excluding += self.hashes[_position][tuple(key)]
+
+            excluding = np.array(excluding)
+            entities = np.delete(np.arange(self.n), excluding)
+
+            # Inject in the zero arr
+            corrupted[write_index: write_index+entities.shape[0], :] = data
+            corrupted[write_index: write_index+entities.shape[0], _position] = entities
+            write_index += entities.shape[0]
+
+        # Take away orphaned rows from corrupted
+        corrupted = corrupted[:write_index]
+
+        return corrupted
+
+    def _get_entities_(self, n: int, excluding: Union[int, np.array] = None,
+                       keys: np.array = None, data_hash: dict = None) -> np.array:
+        """
+            Step 1: Create random entities (n times)
+            Step 2: If not filtering and excluding, a while loop to ensure all are replaced
+            Step 3: If filtering, then we verify if the ent has not appeared in the dataset
+
+        :param n: number of things to inflect
+        :param excluding:
+            - int - don't have this entity
+            - np.array - don't have these entities AT THESE POSITIONs
+        :param keys: complete data used for filtering
+        :param data_hash: the data hash we're using to do the filtering
+        :return: (n,) entities
+        """
+
+        # Step 1
+        entities = np.random.permutation(np.arange(self.n))[:n]
+
+        # Step 2
+        if excluding is not None and not self.filtering:
+
+            # If excluding is single
+            if type(excluding) in [int, float]:
+                excluding = np.repeat(excluding, n)
+
+            if self.debug:
+                repeats = 0
+
+            while True:
+                eq = entities == excluding
+                if not eq.any():
+                    # If they're completely dissimilar
+                    break
+                new_entities = np.random.choice(np.arange(n), int(np.sum(eq)))
+                entities[eq] = new_entities
+
+                if self.debug:
+                    repeats += 1
+
+        if self.debug:
+            print(f"Corruption: The excluding loop went for {repeats} times.")
+
+        # Step 3
+        if self.filtering:
+            # @TODO: later alligator
+            raise NotImplementedError
+
+        return entities
+
+    def corrupt_batch(self, data: np.array, position=None):
+        """
+            For each positions in data, make inflections. n_infl = len(data) // len(position)
+            Returns (pos, neg) pairs
+        """
+
+        position = self.position if position is None else position
+
+        split_data = np.array_split(data, len(position))
+        neg_data = np.copy(data)
+
+        write_index = 0
+        for i, _data in enumerate(split_data):
+            _position = position[i]
+
+            entities = self._get_entities_(_data.shape[0], excluding=_data[:, _position])
+            neg_data[write_index: write_index+_data.shape[0], _position] = entities
+            write_index += _data.shape[0]
+
+        return neg_data
+
+
+if __name__ == "__main__":
+
+    # Testing Corruption class
+    true = np.random.randint(0, 20, (20000, 3))
+    true[2] = true[1].copy()
+    true[2][-1] = 99
+    corruption = Corruption(20, [0, 2])
+    one_pos = true[10]
+    # print(one_pos)
+
+    neg = corruption.corrupt_one(one_pos)
+    print(neg[:10])
+    print(neg.shape)
+
+    batch = np.random.permutation(true)[:5]
+    print('------')
+    print(batch.shape)
+    n = corruption.corrupt_batch(batch)
+    print(n.shape)
