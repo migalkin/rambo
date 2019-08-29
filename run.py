@@ -115,6 +115,9 @@ if __name__ == "__main__":
     evaluation_valid = EvaluationBench(data, model, 8000, metrics=eval_metrics, _filtered=True)
     evaluation_train = EvaluationBench(_data, model, 8000, metrics=eval_metrics, _filtered=True, trim=0.01)
 
+    # RE-org the data
+    data = {'train': data['index'], 'valid': data['valid']}
+
     args = {
         "epochs": config['EPOCHS'],
         "data": data,
