@@ -43,14 +43,14 @@ EXPERIMENT_CONFIG = {
     'NORM_FOR_NORMALIZATION_OF_RELATIONS': 2,
     'SCORING_FUNCTION_NORM': 1,
     'MARGIN_LOSS': 1,
-    'LEARNING_RATE': 0.01,
+    'LEARNING_RATE': 0.001,
     'NEGATIVE_SAMPLING_PROBS': [0.3, 0.0, 0.2, 0.5],
     'NEGATIVE_SAMPLING_TIMES': 10,
     'BATCH_SIZE': 64,
-    'EPOCHS': 200,
+    'EPOCHS': 1000,
     'IS_QUINTS': False,
     'EVAL_EVERY': 10,
-    'WANDB': False,
+    'WANDB': True,
     'RUN_TESTBENCH_ON_TRAIN': True
 }
 
@@ -108,8 +108,8 @@ if __name__ == "__main__":
     """
         Prepare test benches
     """
-    data = {'train': np.array(training_triples), 'valid': np.array(valid_triples)}
-    _data = {'train': np.array(valid_triples), 'valid': np.array(training_triples)}
+    data = {'index': np.array(training_triples + test_triples), 'eval': np.array(valid_triples)}
+    _data = {'index': np.array(valid_triples + test_triples), 'eval': np.array(training_triples)}
 
     eval_metrics = [acc, mrr, mr, partial(hits_at, k=3), partial(hits_at, k=5), partial(hits_at, k=10)]
     evaluation_valid = EvaluationBench(data, model, 8000, metrics=eval_metrics, _filtered=True)
@@ -132,6 +132,9 @@ if __name__ == "__main__":
     }
 
     traces = training_loop(**args)
+
+    with open('traces.pkl', 'wb+') as f:
+        pickle.dump(traces, f)
 
 
 

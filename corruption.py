@@ -87,7 +87,7 @@ class Corruption:
         corrupted[:, position] = entities
         return corrupted
 
-    def corrupt_one(self, data: np.array, position=None) -> np.array:
+    def corrupt_one(self, data: np.array, position: List[int] = None) -> np.array:
         """
             NO Longer used
 
