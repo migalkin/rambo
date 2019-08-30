@@ -5,14 +5,14 @@ import numpy as np
 import numpy.random as npr
 import torch.nn as nn
 from pathlib import Path
-from typing import Optional, List, Union, Dict
 from collections import namedtuple
+from typing import Optional, List, Union, Dict, Callable
 
-from mytorch.utils.goodies import Timer
+from mytorch.utils.goodies import Timer, FancyDict
 
 Quint = namedtuple('Quint', 's p o qp qe')
 
-KNOWN_DATASETS = ['fb15k237', 'wd15k', 'wikipeople', 'jf17k']
+KNOWN_DATASETS = ['fb15k237', 'wd15k', 'fb15k']  # , 'wikipeople', 'jf17k']
 RAW_DATA_DIR = Path('./data/raw_data')
 PARSED_DATA_DIR = Path('./data/parsed_data')
 PRETRAINING_DATA_DIR = Path('./data/pre_training_data')
@@ -21,9 +21,5 @@ PRETRAINING_DATA_DIR = Path('./data/pre_training_data')
 class UnknownSliceLength(Exception): pass
 
 
-
-
-
-
-
-
+# Some more nice stuff
+lowerall = lambda x: [itm.lower() for itm in x]
