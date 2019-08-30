@@ -159,6 +159,29 @@ def load_fb15k() -> Dict:
 
     return {"train": training_triples, "valid": valid_triples, "test": test_triples, "num_entities": num_entities, "num_relations": num_relations}
 
+
+class IntelligentLoader(object):
+    """ Give me your args I'll give you a path to load the dataset with my superawesome AI """
+
+    @staticmethod
+    def get_dataset(config: Union[dict, FancyDict]) -> Callable:
+        """ Depends upon 'IS_QUINTS' and 'DATASET' """
+
+        # Get the necessary dataset's things.
+        assert config['DATASET'] in KNOWN_DATASETS, f"Dataset {config['DATASET']} is unknown."
+
+        if config['DATASET'] == 'wd15k':
+            if config['IS_QUINTS']:
+                return load_wd15k_quints
+            else:
+                return load_wd15k_triples
+        elif config['DATASET'] == 'fb15k':
+            return load_fb15k
+        elif config['DATASET'] == 'fb15k237':
+            return load_fb15k237
+
+
+
 if __name__ == "__main__":
     ds = load_fb15k237()
     ds1 = load_wd15k_quints()

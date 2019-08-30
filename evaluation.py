@@ -14,7 +14,7 @@ class EvaluationBench:
     """
 
     def __init__(self, data: Dict[str, Union[List[int], np.array]], model: nn.Module,
-                 bs: int, metrics: list, _filtered: bool = False, trim: float = None):
+                 bs: int, metrics: list, _filtered: bool = False, trim: float = None, positions: List[int] = None):
         """
             :param data: {'index': list/iter of positive triples, 'eval': list/iter of positive triples}.
             Np array are appreciated
@@ -29,7 +29,7 @@ class EvaluationBench:
 
         # Find the kind of data we're dealing with
         self.max_len_data = max(data['index'].shape[1], data['eval'].shape[1])
-        self.corruption_positions = list(range(0, self.max_len_data, 2))
+        self.corruption_positions = list(range(0, self.max_len_data, 2)) if not positions else positions
 
         # Create a corruption object
         self.corrupter = Corruption(n=self.model.num_entities, position=self.corruption_positions, debug=False,
