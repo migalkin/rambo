@@ -16,7 +16,7 @@ class EvaluationBench:
     def __init__(self, data: Dict[str, Union[List[int], np.array]], model: nn.Module,
                  bs: int, metrics: list, _filtered: bool = False, trim: float = None):
         """
-            :param data: {'train': list/iter of positive triples, 'valid': list/iter of positive triples}.
+            :param data: {'index': list/iter of positive triples, 'eval': list/iter of positive triples}.
             Np array are appreciated
             :param model: the nn module we're testing
             :param bs: anything under 256 is shooting yourself in the foot.
@@ -24,20 +24,20 @@ class EvaluationBench:
             """
         self.bs, self.filtered = bs, _filtered
         self.model = model
-        self.data_valid = data['valid']
+        self.data_eval = data['eval']
         self.metrics = metrics
 
         # Find the kind of data we're dealing with
-        self.max_len_data = max(data['train'].shape[1], data['valid'].shape[1])
+        self.max_len_data = max(data['index'].shape[1], data['eval'].shape[1])
         self.corruption_positions = list(range(0, self.max_len_data, 2))
 
         # Create a corruption object
         self.corrupter = Corruption(n=self.model.num_entities, position=self.corruption_positions, debug=False,
-                                    gold_data=np.vstack((data['train'], data['valid'])) if self.filtered else None)
+                                    gold_data=np.vstack((data['index'], data['eval'])) if self.filtered else None)
 
         if trim is not None:
             assert trim <= 1.0, "Trim ratio can not be more than 1.0"
-            self.data_valid = np.random.permutation(self.data_valid)[:int(trim*len(self.data_valid))]
+            self.data_eval = np.random.permutation(self.data_eval)[:int(trim * len(self.data_eval))]
 
     def reset(self):
         """ Call when you wanna run again but not change hashes etc """
@@ -49,7 +49,7 @@ class EvaluationBench:
 
     def _summarize_metrics_(self, accumulated_metrics: np.array) -> np.array:
         """
-            Aggregate metrics across time. Accepts np array of (len(self.data_valid), len(self.metrics))
+            Aggregate metrics across time. Accepts np array of (len(self.data_eval), len(self.metrics))
         """
         mean = np.mean(accumulated_metrics, axis=0)
         summary = {}
@@ -81,7 +81,7 @@ class EvaluationBench:
 
         with Timer() as timer:
             with torch.no_grad():
-                for positive_data in tqdm(self.data_valid):
+                for positive_data in tqdm(self.data_eval):
 
                     metric_across_positions = []
 
@@ -117,22 +117,12 @@ class EvaluationBench:
         # Spruce up the summary with more information
         time_taken = timer.interval
         metrics = self._summarize_metrics_(metrics)
-        summary = {'metrics': metrics, 'time_taken': time_taken, 'data_length': len(self.data_valid),
+        summary = {'metrics': metrics, 'time_taken': time_taken, 'data_length': len(self.data_eval),
                    'max_len_data': self.max_len_data, 'filtered': self.filtered}
 
         self.summarize_run(summary)
 
         return summary
-
-    def run_faster(self, *args, **kwargs):
-        """
-            Similar to run but tries to put multiple pos in one batch if permitted by bs
-            TODO
-        :param args:
-        :param kwargs:
-        :return:
-        """
-        ...
 
 
 def acc(scores: torch.Tensor) -> np.float:
@@ -150,6 +140,7 @@ def mrr(scores: torch.Tensor) -> np.float:
 def mr(scores: torch.Tensor) -> np.float:
     """ Tested | Accepts one (n,) tensor """
     ranks = (torch.argsort(scores, dim=0) == 0).nonzero()[0]
+    ranks += 1
     return ranks.detach().cpu().numpy().item()
 
 
@@ -195,7 +186,7 @@ if __name__ == "__main__":
 
     pos_data = np.random.randint(0, 15000, (400000, 5))
     pos_data_vl = np.random.randint(0, 15000, (400000, 5))
-    data = {'train': pos_data, 'valid': pos_data_vl}
+    data = {'index': pos_data, 'eval': pos_data_vl}
     bs = 2
     filtered = True
     quint = True
