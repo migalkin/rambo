@@ -1,7 +1,7 @@
 """
     File which enables easily loading any dataset we need
 """
-
+import operator
 from utils import *
 
 
@@ -57,7 +57,7 @@ def load_wd15k_quints() -> Dict:
              prtoid[q[3]] if q[3] is not None else prtoid['__na__'],
              entoid[q[4]] if q[4] is not None else entoid['__na__']] for q in test_quints]
 
-    return {"train": train, "valid": valid, "test": test}
+    return {"train": train, "valid": valid, "test": test, "num_entities": len(q_entities), "num_relations": len(q_predicates)}
 
 
 def load_wd15k_triples() -> Dict:
@@ -94,9 +94,72 @@ def load_wd15k_triples() -> Dict:
     valid = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in valid_triples]
     test = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in test_triples]
 
-    return {"train": train, "valid": valid, "test": test}
+    return {"train": train, "valid": valid, "test": test, "num_entities": len(triples_entities), "num_relations": len(triples_predicates)}
 
+def load_fb15k237() -> Dict:
+    RAW_DATA_DIR = Path('./data/raw_data/fb15k237')
+
+    training_triples = []
+    valid_triples = []
+    test_triples = []
+
+    with open(RAW_DATA_DIR / "entity2id.txt", "r") as ent_file, \
+            open(RAW_DATA_DIR / "relation2id.txt", "r") as rel_file, \
+            open(RAW_DATA_DIR / "train2id.txt", "r") as train_file, \
+            open(RAW_DATA_DIR / "valid2id.txt", "r") as valid_file, \
+            open(RAW_DATA_DIR / "test2id.txt", "r") as test_file:
+        num_entities = int(next(ent_file).strip("\n"))
+        num_relations = int(next(rel_file).strip("\n"))
+        num_trains = int(next(train_file).strip("\n"))
+        for line in train_file:
+            triple = line.strip("\n").split(" ")
+            training_triples.append([int(triple[0]), int(triple[2]), int(triple[1])])
+
+        num_valid = int(next(valid_file).strip("\n"))
+        for line in valid_file:
+            triple = line.strip("\n").split(" ")
+            valid_triples.append([int(triple[0]), int(triple[2]), int(triple[1])])
+
+        num_test = int(next(test_file).strip("\n"))
+        for line in test_file:
+            triple = line.strip("\n").split(" ")
+            test_triples.append([int(triple[0]), int(triple[2]), int(triple[1])])
+
+    return {"train": training_triples, "valid": valid_triples, "test": test_triples, "num_entities": num_entities, "num_relations": num_relations}
+
+
+def load_fb15k() -> Dict:
+    RAW_DATA_DIR = Path('./data/raw_data/fb15k')
+
+    training_triples = []
+    valid_triples = []
+    test_triples = []
+
+    with open(RAW_DATA_DIR / "entity2id.txt", "r") as ent_file, \
+            open(RAW_DATA_DIR / "relation2id.txt", "r") as rel_file, \
+            open(RAW_DATA_DIR / "train2id.txt", "r") as train_file, \
+            open(RAW_DATA_DIR / "valid2id.txt", "r") as valid_file, \
+            open(RAW_DATA_DIR / "test2id.txt", "r") as test_file:
+        num_entities = int(next(ent_file).strip("\n"))
+        num_relations = int(next(rel_file).strip("\n"))
+        num_trains = int(next(train_file).strip("\n"))
+        for line in train_file:
+            triple = line.strip("\n").split(" ")
+            training_triples.append([int(triple[0]), int(triple[2]), int(triple[1])])
+
+        num_valid = int(next(valid_file).strip("\n"))
+        for line in valid_file:
+            triple = line.strip("\n").split(" ")
+            valid_triples.append([int(triple[0]), int(triple[2]), int(triple[1])])
+
+        num_test = int(next(test_file).strip("\n"))
+        for line in test_file:
+            triple = line.strip("\n").split(" ")
+            test_triples.append([int(triple[0]), int(triple[2]), int(triple[1])])
+
+    return {"train": training_triples, "valid": valid_triples, "test": test_triples, "num_entities": num_entities, "num_relations": num_relations}
 
 if __name__ == "__main__":
-    quints = load_wd15k_quints()
-    triples = load_wd15k_triples()
+    ds = load_fb15k237()
+    ds1 = load_wd15k_quints()
+    ds2 = load_wd15k_triples()
