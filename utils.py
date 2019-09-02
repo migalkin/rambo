@@ -6,7 +6,7 @@ import numpy.random as npr
 import torch.nn as nn
 from pathlib import Path
 from collections import namedtuple
-from typing import Optional, List, Union, Dict, Callable
+from typing import Optional, List, Union, Dict, Callable, Tuple
 
 from mytorch.utils.goodies import Timer, FancyDict
 

@@ -8,3 +8,5 @@
 1. [DONE] Verify the inputs and outputs of MRR, MR, HITS fn
 1. Connect argument parsing to change config
 1. Write nice data loaders, clean, out of the way...
+
+# ADD MORE TESTS!

@@ -160,11 +160,11 @@ def load_fb15k() -> Dict:
     return {"train": training_triples, "valid": valid_triples, "test": test_triples, "num_entities": num_entities, "num_relations": num_relations}
 
 
-class IntelligentLoader(object):
+class DataManager(object):
     """ Give me your args I'll give you a path to load the dataset with my superawesome AI """
 
     @staticmethod
-    def get_dataset(config: Union[dict, FancyDict]) -> Callable:
+    def load(config: Union[dict, FancyDict]) -> Callable:
         """ Depends upon 'IS_QUINTS' and 'DATASET' """
 
         # Get the necessary dataset's things.
@@ -180,6 +180,16 @@ class IntelligentLoader(object):
         elif config['DATASET'] == 'fb15k237':
             return load_fb15k237
 
+    @staticmethod
+    def gather_entities(data: Tuple[list], n_ents: int, positions: List[int]) -> np.array:
+        """ Count the number of entities at particular positions """
+        appeared = np.zeros(n_ents, dtype=np.int)
+        for datum in data:
+            for pos in positions:
+                appeared[datum[pos]] = 1
+
+        # Return all the entities which are one.
+        return np.arange(n_ents)[appeared.astype(np.bool)]
 
 
 if __name__ == "__main__":

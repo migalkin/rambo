@@ -13,7 +13,7 @@ from mytorch.utils.goodies import *
 
 # Local imports
 from parse_wd15k import Quint
-from load import IntelligentLoader
+from load import DataManager
 from utils import *
 from evaluation import EvaluationBench, acc, mrr, mr, hits_at, evaluate_pointwise
 from models import TransE
@@ -29,6 +29,16 @@ from loops import training_loop
 np.random.seed(42)
 random.seed(42)
 
+"""
+    Explanation:
+        *CORRUPT_QUALIFIER_ENTITIES* 
+            a flag which if False, determines whether during making negatives, 
+                should we exclude entities that appear ONLY as qualifiers
+            Do not turn it off if the experiment is about predicting qualifiers, ofcourse.
+
+        *POSITIONS*
+            the positions on which we should inflect the negatives.
+"""
 DEFAULT_CONFIG = {
     'EMBEDDING_DIM': 50,
     'NORM_FOR_NORMALIZATION_OF_ENTITIES': 2,
@@ -40,20 +50,20 @@ DEFAULT_CONFIG = {
     'NEGATIVE_SAMPLING_TIMES': 10,
     'BATCH_SIZE': 64,
     'EPOCHS': 1000,
-    'IS_QUINTS': True,
+    'IS_QUINTS': None,
     'EVAL_EVERY': 10,
     'WANDB': True,
     'RUN_TESTBENCH_ON_TRAIN': True,
     'DATASET': 'wd15k',
-    'POSITIONS': [0, 2],
-    'DEVICE': 'cuda'
+    'CORRUPTION_POSITIONS': [0, 2],
+    'DEVICE': 'cuda',
+    'EXCLUDE_ENTITIES_NOT_IN_CORRPOS': True
 }
 
 if __name__ == "__main__":
 
     # Get parsed arguments
     parsed_args = parse_args(sys.argv[1:])
-
     print(parsed_args)
 
     # Superimpose this on default config
@@ -65,21 +75,34 @@ if __name__ == "__main__":
             needed_type = type(DEFAULT_CONFIG[k.upper()])
             DEFAULT_CONFIG[k.upper()] = needed_type(v)
 
-    data = IntelligentLoader.get_dataset(config=DEFAULT_CONFIG)()
+    # Custom Sanity Checks
+    if DEFAULT_CONFIG['DATASET'] == 'wd15k':
+        assert DEFAULT_CONFIG['IS_QUINTS'] is not None, "You use WD15k dataset and don't specify whether to treat them " \
+                                                     "as quints or not. Nicht cool'"
+    if max(DEFAULT_CONFIG['CORRUPTION_POSITIONS']) > 2:
+        assert DEFAULT_CONFIG['EXCLUDE_ENTITIES_NOT_IN_CORRPOS'] is True, f"Since we're corrupting objects at pos. " \
+                                                                     f"{DEFAULT_CONFIG['CORRUPTION_POSITIONS']}," \
+                                                                     f"You must allow including entities which appear" \
+                                                                     f"exclusively in qualifiers, too!"
+
+    """
+        Load data based on the args/config
+    """
+    data = DataManager.load(config=DEFAULT_CONFIG)()
     try:
         training_triples, valid_triples, test_triples, num_entities, num_relations = data.values()
     except ValueError:
         raise ValueError(f"Honey I broke the loader for {DEFAULT_CONFIG['DATASET']}")
 
-    # Custom Sanity Checks
-    if DEFAULT_CONFIG['DATASET'] == 'wd15k':
-        assert 'is_quints' in lowerall(parsed_args), "You use WD15k dataset and don't specify whether to treat them " \
-                                                     "as quints or not. Nicht cool'"
-
     DEFAULT_CONFIG['NUM_ENTITIES'] = num_entities
     DEFAULT_CONFIG['NUM_RELATIONS'] = num_relations
 
-    pprint(DEFAULT_CONFIG)
+    if not DEFAULT_CONFIG['EXCLUDE_ENTITIES_NOT_IN_CORRPOS']:
+        negative_entities = DataManager.gather_entities(data=[training_triples + valid_triples + test_triples],
+                                                        positions=DEFAULT_CONFIG['CORRUPTION_POSITIONS'],
+                                                        n_ents=num_entities)
+    else:
+        negative_entities = num_entities
 
     """
         Make ze model
@@ -103,11 +126,13 @@ if __name__ == "__main__":
     _data = {'index': np.array(valid_triples + test_triples), 'eval': np.array(training_triples)}
 
     eval_metrics = [acc, mrr, mr, partial(hits_at, k=3), partial(hits_at, k=5), partial(hits_at, k=10)]
-    evaluation_valid = EvaluationBench(data, model, 8000,
-                                       metrics=eval_metrics, _filtered=True,
+    evaluation_valid = EvaluationBench(data, model, bs=8000,
+                                       metrics=eval_metrics, filtered=True,
+                                       negative_entities=negative_entities,
                                        positions=config.get('POSITIONS', None))
-    evaluation_train = EvaluationBench(_data, model, 8000,
-                                       metrics=eval_metrics, _filtered=True,
+    evaluation_train = EvaluationBench(_data, model, bs=8000,
+                                       metrics=eval_metrics, filtered=True,
+                                       negative_entities=negative_entities,
                                        positions=config.get('POSITIONS', None), trim=0.01)
 
     # RE-org the data
@@ -118,7 +143,7 @@ if __name__ == "__main__":
         "data": data,
         "opt": optimizer,
         "train_fn": model,
-        "neg_generator": Corruption(n=num_entities,
+        "neg_generator": Corruption(n=negative_entities,
                                     position=config.get('POSITIONS', [0, 2, 4] if config['IS_QUINTS'] else [0, 2])),
         "device": config['DEVICE'],
         "data_fn": partial(SimpleSampler, bs=config["BATCH_SIZE"]),

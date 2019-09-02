@@ -13,16 +13,27 @@ class EvaluationBench:
         |-> compares it with **all** possible negative triples, and reports metrics
     """
 
-    def __init__(self, data: Dict[str, Union[List[int], np.array]], model: nn.Module,
-                 bs: int, metrics: list, _filtered: bool = False, trim: float = None, positions: List[int] = None):
+    def __init__(self,
+                 data: Dict[str, Union[List[int], np.array]],
+                 model: nn.Module,
+                 negative_entities: Union[int, np.array],
+                 bs: int,
+                 metrics: list,
+                 filtered: bool = False,
+                 trim: float = None,
+                 positions: List[int] = None):
         """
             :param data: {'index': list/iter of positive triples, 'eval': list/iter of positive triples}.
             Np array are appreciated
             :param model: the nn module we're testing
+            :param negative_entities: either an int (indicating num_entities), or a array of possible negative entities
             :param bs: anything under 256 is shooting yourself in the foot.
-            :param _filtered: if you want corrupted triples checked.
+            :param metrics: a list of callables (from methods in this file) we call to get a metric
+            :param filtered: if you want corrupted triples checked.
+            :param trim: We could drop the 'eval' data, to speed things up
+            :param positions: which positions should we inflect.
             """
-        self.bs, self.filtered = bs, _filtered
+        self.bs, self.filtered = bs, filtered
         self.model = model
         self.data_eval = data['eval']
         self.metrics = metrics
@@ -32,7 +43,7 @@ class EvaluationBench:
         self.corruption_positions = list(range(0, self.max_len_data, 2)) if not positions else positions
 
         # Create a corruption object
-        self.corrupter = Corruption(n=self.model.num_entities, position=self.corruption_positions, debug=False,
+        self.corrupter = Corruption(n=negative_entities, position=self.corruption_positions, debug=False,
                                     gold_data=np.vstack((data['index'], data['eval'])) if self.filtered else None)
 
         if trim is not None:
@@ -191,7 +202,7 @@ if __name__ == "__main__":
     filtered = True
     quint = True
 
-    eb = EvaluationBench(data=data, model=DummyModel(), bs=bs, _filtered=filtered, metrics=[acc, mrr])
+    eb = EvaluationBench(data=data, model=DummyModel(), bs=bs, filtered=filtered, metrics=[acc, mrr])
 
     ps = pos_data[0]
     print(ps)
