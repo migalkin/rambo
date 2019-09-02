@@ -98,15 +98,19 @@ if __name__ == "__main__":
     except ValueError:
         raise ValueError(f"Honey I broke the loader for {DEFAULT_CONFIG['DATASET']}")
 
-    DEFAULT_CONFIG['NUM_ENTITIES'] = num_entities
-    DEFAULT_CONFIG['NUM_RELATIONS'] = num_relations
-
     if DEFAULT_CONFIG['ENT_POS_FILTERED']:
         entities_for_corruption = DataManager.gather_entities(data=training_triples + valid_triples + test_triples,
                                                               positions=DEFAULT_CONFIG['CORRUPTION_POSITIONS'],
                                                               n_ents=num_entities)
+        DEFAULT_CONFIG['NUM_ENTITIES_FILTERED'] = len(entities_for_corruption)
     else:
         entities_for_corruption = num_entities
+        DEFAULT_CONFIG['NUM_ENTITIES_FILTERED'] = entities_for_corruption
+
+    print(DEFAULT_CONFIG['NUM_ENTITIES_FILTERED'])
+    DEFAULT_CONFIG['NUM_ENTITIES'] = num_entities
+    DEFAULT_CONFIG['NUM_RELATIONS'] = num_relations
+
 
     """
         Make ze model
@@ -147,7 +151,7 @@ if __name__ == "__main__":
         "data": data,
         "opt": optimizer,
         "train_fn": model,
-        "neg_generator": Corruption(n=num_entities,
+        "neg_generator": Corruption(n=entities_for_corruption,
                                     position=config.get('POSITIONS', [0, 2, 4] if config['IS_QUINTS'] else [0, 2])),
         "device": config['DEVICE'],
         "data_fn": partial(SimpleSampler, bs=config["BATCH_SIZE"]),

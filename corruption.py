@@ -72,7 +72,6 @@ class Corruption:
 
         return hashes
 
-    @staticmethod
     def delete(self, including: np.array, excluding: np.array, isrange: bool) -> np.array:
         """
             Safely delete the excluding things from the including things.
@@ -193,7 +192,12 @@ class Corruption:
                 if not eq.any():
                     # If they're completely dissimilar
                     break
-                new_entities = np.random.choice(np.arange(bs), int(np.sum(eq)))
+
+                # Sample new entities
+                if type(self.n) is int:
+                    new_entities = np.random.choice(np.arange(self.n), int(np.sum(eq)))
+                else:
+                    new_entities = np.random.choice(self.n, int(np.sum(eq)))
                 entities[eq] = new_entities
 
                 if self.debug:
@@ -237,13 +241,14 @@ if __name__ == "__main__":
     true = np.random.randint(0, 20, (20000, 3))
     true[2] = true[1].copy()
     true[2][-1] = 99
-    corruption = Corruption(20, [0, 2])
+    n = np.array([0,1,2,3,4,7,8,9,10,11,12,15,18,19])
+    corruption = Corruption(n, position=[0, 2])
     one_pos = true[10]
     # print(one_pos)
 
-    neg = corruption.corrupt_one(one_pos)
-    print(neg[:10])
-    print(neg.shape)
+    # neg = corruption.corrupt_one(one_pos)
+    # print(neg[:10])
+    # print(neg.shape)
 
     batch = np.random.permutation(true)[:5]
     print('------')
