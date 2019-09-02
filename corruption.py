@@ -156,14 +156,14 @@ class Corruption:
 
         return corrupted
 
-    def _get_entities_(self, n: int, excluding: Union[int, np.array] = None,
+    def _get_entities_(self, bs: Union[int, np.array], excluding: Union[int, np.array] = None,
                        keys: np.array = None, data_hash: dict = None) -> np.array:
         """
             Step 1: Create random entities (n times)
             Step 2: If not filtering and excluding, a while loop to ensure all are replaced
             Step 3: If filtering, then we verify if the ent has not appeared in the dataset
 
-        :param n: number of things to inflect
+        :param bs: number of things to inflect
         :param excluding:
             - int - don't have this entity
             - np.array - don't have these entities AT THESE POSITIONs
@@ -173,14 +173,17 @@ class Corruption:
         """
 
         # Step 1
-        entities = np.random.permutation(np.arange(self.n))[:n]
+        if type(self.n) is int:
+            entities = np.random.permutation(np.arange(self.n))[:bs]
+        else:
+            entities = np.random.permutation(self.n)[:bs]
 
         # Step 2
         if excluding is not None and not self.filtering:
 
             # If excluding is single
             if type(excluding) in [int, float]:
-                excluding = np.repeat(excluding, n)
+                excluding = np.repeat(excluding, bs)
 
             if self.debug:
                 repeats = 0
@@ -190,7 +193,7 @@ class Corruption:
                 if not eq.any():
                     # If they're completely dissimilar
                     break
-                new_entities = np.random.choice(np.arange(n), int(np.sum(eq)))
+                new_entities = np.random.choice(np.arange(bs), int(np.sum(eq)))
                 entities[eq] = new_entities
 
                 if self.debug:

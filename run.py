@@ -31,10 +31,10 @@ random.seed(42)
 
 """
     Explanation:
-        *CORRUPT_QUALIFIER_ENTITIES* 
-            a flag which if False, determines whether during making negatives, 
-                should we exclude entities that appear ONLY as qualifiers
-            Do not turn it off if the experiment is about predicting qualifiers, ofcourse.
+        *ENT_POS_FILTERED* 
+            a flag which if False, implies that while making negatives, 
+                we should exclude entities that appear ONLY in non-corrupting positions.
+            Do not turn it off if the experiment is about predicting qualifiers, of course.
 
         *POSITIONS*
             the positions on which we should inflect the negatives.
@@ -57,7 +57,7 @@ DEFAULT_CONFIG = {
     'DATASET': 'wd15k',
     'CORRUPTION_POSITIONS': [0, 2],
     'DEVICE': 'cuda',
-    'EXCLUDE_ENTITIES_NOT_IN_CORRPOS': True
+    'ENT_POS_FILTERED': True
 }
 
 if __name__ == "__main__":
@@ -72,18 +72,22 @@ if __name__ == "__main__":
         if k not in DEFAULT_CONFIG.keys():
             DEFAULT_CONFIG[k.upper()] = v
         else:
-            needed_type = type(DEFAULT_CONFIG[k.upper()])
-            DEFAULT_CONFIG[k.upper()] = needed_type(v)
+            default_val = DEFAULT_CONFIG[k.upper()]
+            if default_val is not None:
+                needed_type = type(default_val)
+                DEFAULT_CONFIG[k.upper()] = needed_type(v)
+            else:
+                DEFAULT_CONFIG[k.upper()] = v
 
     # Custom Sanity Checks
     if DEFAULT_CONFIG['DATASET'] == 'wd15k':
         assert DEFAULT_CONFIG['IS_QUINTS'] is not None, "You use WD15k dataset and don't specify whether to treat them " \
                                                      "as quints or not. Nicht cool'"
-    if max(DEFAULT_CONFIG['CORRUPTION_POSITIONS']) > 2:
-        assert DEFAULT_CONFIG['EXCLUDE_ENTITIES_NOT_IN_CORRPOS'] is True, f"Since we're corrupting objects at pos. " \
-                                                                     f"{DEFAULT_CONFIG['CORRUPTION_POSITIONS']}," \
-                                                                     f"You must allow including entities which appear" \
-                                                                     f"exclusively in qualifiers, too!"
+    if max(DEFAULT_CONFIG['CORRUPTION_POSITIONS']) > 2:     # If we're corrupting something apart from S and O
+        assert DEFAULT_CONFIG['ENT_POS_FILTERED'] is False, f"Since we're corrupting objects at pos. " \
+                                                            f"{DEFAULT_CONFIG['CORRUPTION_POSITIONS']}," \
+                                                            f"You must allow including entities which appear" \
+                                                            f"exclusively in qualifiers, too!"
 
     """
         Load data based on the args/config
@@ -97,12 +101,12 @@ if __name__ == "__main__":
     DEFAULT_CONFIG['NUM_ENTITIES'] = num_entities
     DEFAULT_CONFIG['NUM_RELATIONS'] = num_relations
 
-    if not DEFAULT_CONFIG['EXCLUDE_ENTITIES_NOT_IN_CORRPOS']:
-        negative_entities = DataManager.gather_entities(data=[training_triples + valid_triples + test_triples],
-                                                        positions=DEFAULT_CONFIG['CORRUPTION_POSITIONS'],
-                                                        n_ents=num_entities)
+    if DEFAULT_CONFIG['ENT_POS_FILTERED']:
+        entities_for_corruption = DataManager.gather_entities(data=training_triples + valid_triples + test_triples,
+                                                              positions=DEFAULT_CONFIG['CORRUPTION_POSITIONS'],
+                                                              n_ents=num_entities)
     else:
-        negative_entities = num_entities
+        entities_for_corruption = num_entities
 
     """
         Make ze model
@@ -128,11 +132,11 @@ if __name__ == "__main__":
     eval_metrics = [acc, mrr, mr, partial(hits_at, k=3), partial(hits_at, k=5), partial(hits_at, k=10)]
     evaluation_valid = EvaluationBench(data, model, bs=8000,
                                        metrics=eval_metrics, filtered=True,
-                                       negative_entities=negative_entities,
+                                       negative_entities=entities_for_corruption,
                                        positions=config.get('POSITIONS', None))
     evaluation_train = EvaluationBench(_data, model, bs=8000,
                                        metrics=eval_metrics, filtered=True,
-                                       negative_entities=negative_entities,
+                                       negative_entities=entities_for_corruption,
                                        positions=config.get('POSITIONS', None), trim=0.01)
 
     # RE-org the data
@@ -143,7 +147,7 @@ if __name__ == "__main__":
         "data": data,
         "opt": optimizer,
         "train_fn": model,
-        "neg_generator": Corruption(n=negative_entities,
+        "neg_generator": Corruption(n=num_entities,
                                     position=config.get('POSITIONS', [0, 2, 4] if config['IS_QUINTS'] else [0, 2])),
         "device": config['DEVICE'],
         "data_fn": partial(SimpleSampler, bs=config["BATCH_SIZE"]),

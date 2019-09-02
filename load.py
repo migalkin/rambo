@@ -181,8 +181,13 @@ class DataManager(object):
             return load_fb15k237
 
     @staticmethod
-    def gather_entities(data: Tuple[list], n_ents: int, positions: List[int]) -> np.array:
-        """ Count the number of entities at particular positions """
+    def gather_entities(data: List[list], n_ents: int, positions: List[int]) -> np.array:
+        """
+            Count the number of entities at particular positions
+                As a bonus, it also excludes entity
+                    which never see the light of the day
+                    in our dataset.
+        """
         appeared = np.zeros(n_ents, dtype=np.int)
         for datum in data:
             for pos in positions:
