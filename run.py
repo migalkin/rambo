@@ -137,11 +137,11 @@ if __name__ == "__main__":
     evaluation_valid = EvaluationBench(data, model, bs=8000,
                                        metrics=eval_metrics, filtered=True,
                                        negative_entities=entities_for_corruption,
-                                       positions=config.get('POSITIONS', None))
+                                       positions=config.get('CORRUPTION_POSITIONS', None))
     evaluation_train = EvaluationBench(_data, model, bs=8000,
                                        metrics=eval_metrics, filtered=True,
                                        negative_entities=entities_for_corruption,
-                                       positions=config.get('POSITIONS', None), trim=0.01)
+                                       positions=config.get('CORRUPTION_POSITIONS', None), trim=0.01)
 
     # RE-org the data
     data = {'train': data['index'], 'valid': data['eval']}
@@ -152,7 +152,7 @@ if __name__ == "__main__":
         "opt": optimizer,
         "train_fn": model,
         "neg_generator": Corruption(n=entities_for_corruption,
-                                    position=config.get('POSITIONS', [0, 2, 4] if config['IS_QUINTS'] else [0, 2])),
+                                    position=config.get('CORRUPTION_POSITIONS', [0, 2, 4] if config['IS_QUINTS'] else [0, 2])),
         "device": config['DEVICE'],
         "data_fn": partial(SimpleSampler, bs=config["BATCH_SIZE"]),
         "eval_fn_trn": evaluate_pointwise,
