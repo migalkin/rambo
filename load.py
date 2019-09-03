@@ -183,6 +183,8 @@ class DataManager(object):
     @staticmethod
     def gather_entities(data: List[list], n_ents: int, positions: List[int]) -> np.array:
         """
+            NO LONGER USED
+
             Count the number of entities at particular positions
                 As a bonus, it also excludes entity
                     which never see the light of the day
@@ -195,6 +197,26 @@ class DataManager(object):
 
         # Return all the entities which are one.
         return np.arange(n_ents)[appeared.astype(np.bool)]
+
+    @staticmethod
+    def gather_missing_entities(data: List[list], n_ents: int, positions: List[int]) -> np.array :
+        """
+
+            Find the entities which aren't available from range(n_ents). Think inverse of gather_entities
+
+        :param data: A list of triples/quints whatever
+        :param n_ents: Int signifying total number of entities
+        :param positions: the positions over which we intend to count these things.
+        :return: np array of entities NOT appearing in range(n_ents)
+        """
+
+        appeared = np.zeros(n_ents, dtype=np.int)
+        for datum in data:
+            for pos in positions:
+                appeared[datum[pos]] = 1
+
+        # Return this removed from range(n_ents)
+        return np.arange(n_ents)[appeared == 0]
 
 
 if __name__ == "__main__":

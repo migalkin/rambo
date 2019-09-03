@@ -99,15 +99,15 @@ if __name__ == "__main__":
         raise ValueError(f"Honey I broke the loader for {DEFAULT_CONFIG['DATASET']}")
 
     if DEFAULT_CONFIG['ENT_POS_FILTERED']:
-        entities_for_corruption = DataManager.gather_entities(data=training_triples + valid_triples + test_triples,
-                                                              positions=DEFAULT_CONFIG['CORRUPTION_POSITIONS'],
-                                                              n_ents=num_entities)
-        DEFAULT_CONFIG['NUM_ENTITIES_FILTERED'] = len(entities_for_corruption)
+        ent_excluded_from_corr = DataManager.gather_missing_entities(data=training_triples + valid_triples + test_triples,
+                                                                     positions=DEFAULT_CONFIG['CORRUPTION_POSITIONS'],
+                                                                     n_ents=num_entities)
+        DEFAULT_CONFIG['NUM_ENTITIES_FILTERED'] = len(ent_excluded_from_corr)
     else:
-        entities_for_corruption = num_entities
-        DEFAULT_CONFIG['NUM_ENTITIES_FILTERED'] = entities_for_corruption
+        ent_excluded_from_corr = 0
+        DEFAULT_CONFIG['NUM_ENTITIES_FILTERED'] = ent_excluded_from_corr
 
-    print(DEFAULT_CONFIG['NUM_ENTITIES_FILTERED'])
+    print(num_entities-DEFAULT_CONFIG['NUM_ENTITIES_FILTERED'])
     DEFAULT_CONFIG['NUM_ENTITIES'] = num_entities
     DEFAULT_CONFIG['NUM_RELATIONS'] = num_relations
 
@@ -136,11 +136,13 @@ if __name__ == "__main__":
     eval_metrics = [acc, mrr, mr, partial(hits_at, k=3), partial(hits_at, k=5), partial(hits_at, k=10)]
     evaluation_valid = EvaluationBench(data, model, bs=8000,
                                        metrics=eval_metrics, filtered=True,
-                                       negative_entities=entities_for_corruption,
+                                       n_ents=num_entities,
+                                       excluding_entities=ent_excluded_from_corr,
                                        positions=config.get('CORRUPTION_POSITIONS', None))
     evaluation_train = EvaluationBench(_data, model, bs=8000,
                                        metrics=eval_metrics, filtered=True,
-                                       negative_entities=entities_for_corruption,
+                                       n_ents=num_entities,
+                                       excluding_entities=ent_excluded_from_corr,
                                        positions=config.get('CORRUPTION_POSITIONS', None), trim=0.01)
 
     # RE-org the data
@@ -151,7 +153,7 @@ if __name__ == "__main__":
         "data": data,
         "opt": optimizer,
         "train_fn": model,
-        "neg_generator": Corruption(n=entities_for_corruption,
+        "neg_generator": Corruption(n=num_entities, excluding=ent_excluded_from_corr,
                                     position=config.get('CORRUPTION_POSITIONS', [0, 2, 4] if config['IS_QUINTS'] else [0, 2])),
         "device": config['DEVICE'],
         "data_fn": partial(SimpleSampler, bs=config["BATCH_SIZE"]),

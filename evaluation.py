@@ -16,7 +16,8 @@ class EvaluationBench:
     def __init__(self,
                  data: Dict[str, Union[List[int], np.array]],
                  model: nn.Module,
-                 negative_entities: Union[int, np.array],
+                 n_ents: int,
+                 excluding_entities: Union[int, np.array],
                  bs: int,
                  metrics: list,
                  filtered: bool = False,
@@ -26,9 +27,9 @@ class EvaluationBench:
             :param data: {'index': list/iter of positive triples, 'eval': list/iter of positive triples}.
             Np array are appreciated
             :param model: the nn module we're testing
-            :param negative_entities: either an int (indicating num_entities), or a array of possible negative entities
+            :param excluding_entities: either an int (indicating num_entities), or a array of possible negative entities
             :param bs: anything under 256 is shooting yourself in the foot.
-            :param metrics: a list of callables (from methods in this file) we call to get a metric
+            :param metrics: a list of callable (from methods in this file) we call to get a metric
             :param filtered: if you want corrupted triples checked.
             :param trim: We could drop the 'eval' data, to speed things up
             :param positions: which positions should we inflect.
@@ -43,7 +44,8 @@ class EvaluationBench:
         self.corruption_positions = list(range(0, self.max_len_data, 2)) if not positions else positions
 
         # Create a corruption object
-        self.corrupter = Corruption(n=negative_entities, position=self.corruption_positions, debug=False,
+        self.corrupter = Corruption(n=n_ents, position=self.corruption_positions, debug=False,
+                                    excluding=excluding_entities,
                                     gold_data=np.vstack((data['index'], data['eval'])) if self.filtered else None)
 
         if trim is not None:

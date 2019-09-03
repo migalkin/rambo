@@ -37,7 +37,7 @@ class Corruption:
             (p,n) pairs with repeated p's if needed
     """
 
-    def __init__(self, n: Union[int, ], position: list = None, gold_data: np.array = None,
+    def __init__(self, n: int, position: list = None, excluding: np.array = None, gold_data: np.array = None,
                  debug: bool = False, caching: bool = False):
         """
             See class desc.
@@ -49,6 +49,7 @@ class Corruption:
         :param caching: never mind this for now.
         """
         self.n = n
+        self.excluding = excluding
         self.position, self.debug = position, debug
         self.filtering = gold_data is not None
         self.hashes = self._index_(gold_data)
@@ -72,24 +73,6 @@ class Corruption:
 
         return hashes
 
-    def delete(self, including: np.array, excluding: np.array, isrange: bool) -> np.array:
-        """
-            Safely delete the excluding things from the including things.
-        :param including: list of org entities
-        :param excluding: list of entities to remove
-        :param isrange: bool flag whether the including arr is a continuous list starting from zero.
-        :return: deleted np.arr
-        """
-
-        if isrange:
-            return np.delete(np.arange(self.n), excluding)
-
-        matches = np.zeros((excluding.shape[0], including.shape[0]))
-        for i, excluding_entity in enumerate(excluding):
-            matches[i] = (including == excluding_entity).astype(np.int)
-
-        return including[np.sum(matches, axis=0) == 0]
-
     def corrupt_one_position(self, data: np.array, position: int) -> np.array:
         """
             Similar to corrupt_one but only generates negatives for a specific position.
@@ -108,8 +91,9 @@ class Corruption:
             excluding += self.hashes[position][tuple(key)]
 
         excluding = np.array(excluding)
-        including = np.arange(self.n) if type(self.n) is int else self.n
-        entities = self.delete(including, excluding, type(self.n) is int)
+        excluding = np.sort(np.unique(np.concatenate((excluding, self.excluding))))
+        including = np.arange(self.n)
+        entities = np.delete(including, excluding)
 
         corrupted = np.zeros((entities.shape[0], len(data)))
         corrupted[:, :] = data
@@ -142,8 +126,9 @@ class Corruption:
                 excluding += self.hashes[_position][tuple(key)]
 
             excluding = np.array(excluding)
-            including = np.arange(self.n) if type(self.n) is int else self.n
-            entities = self.delete(including, excluding, type(self.n) is int)
+            excluding = np.sort(np.unique(np.concatenate((excluding, self.excluding))))
+            including = np.arange(self.n)
+            entities = np.delete(including, excluding)
 
             # Inject in the zero arr
             corrupted[write_index: write_index+entities.shape[0], :] = data
@@ -171,11 +156,8 @@ class Corruption:
         :return: (n,) entities
         """
 
-        # Step 1
-        if type(self.n) is int:
-            entities = np.random.permutation(np.arange(self.n))[:bs]
-        else:
-            entities = np.random.permutation(self.n)[:bs]
+        # Step 1: Choose an init set of entities excluding self.excluding
+        entities = np.random.permutation(np.delete(np.arange(self.n), self.excluding))[:bs]
 
         # Step 2
         if excluding is not None and not self.filtering:
@@ -194,10 +176,7 @@ class Corruption:
                     break
 
                 # Sample new entities
-                if type(self.n) is int:
-                    new_entities = np.random.choice(np.arange(self.n), int(np.sum(eq)))
-                else:
-                    new_entities = np.random.choice(self.n, int(np.sum(eq)))
+                new_entities = np.random.choice(np.delete(np.arange(self.n), self.excluding), int(np.sum(eq)))
                 entities[eq] = new_entities
 
                 if self.debug:
