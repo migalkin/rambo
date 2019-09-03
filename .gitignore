@@ -327,3 +327,17 @@ fabric.properties
 # Android studio 3.1+ serialized cache file
 .idea/caches/build_file_checksums.ser
 
+# OpenKE
+
+.idea
+OpenKE
+data/parsed_data/parsed_raw_data.csv
+data/parsed_data/parsed_raw_data.pkl
+data/parsed_data/parsed_raw_data.rs
+data/parsed_data/parsed_raw_data_stdreif.nt
+data/parsed_data/parsed_raw_data_stdreif.pkl
+data/parsed_data/parsed_raw_full_quints_statements.pkl
+data/parsed_data/parsed_raw_full_quints_statements.rs
+data/pre_training_data/
+data/raw_data/wd15k/fb15k_wd_uri_only.nt
+wandb
