@@ -68,7 +68,7 @@ def parse_wikipeople_flat_quints():
                             stat_obj["qualifiers"].append((k, statement[k]))
 
                     if len(stat_obj["qualifiers"]) == 0:
-                        to_dump.append(Quint(s=stat_obj['object'], p=stat_obj["predicate"], o=stat_obj["object"] if stat_obj["object"][0][0] == "Q" else f"\"{stat_obj['object']}\"", qp=None, qe=None))
+                        to_dump.append(Quint(s=stat_obj['subject'], p=stat_obj["predicate"], o=stat_obj["object"] if stat_obj["object"][0][0] == "Q" else f"\"{stat_obj['object']}\"", qp=None, qe=None))
                         o.write(templ.format(stat_obj["subject"], stat_obj["predicate"], stat_obj["object"] if stat_obj["object"][0][0] == "Q" else f"\"{stat_obj['object']}\"", "", ""))
                     else:
                         # create flat quints from the object
@@ -79,8 +79,100 @@ def parse_wikipeople_flat_quints():
                                                  stat_obj["predicate"],
                                                  main_obj,
                                                  qp, qual_o))
-                            to_dump.append(Quint(s=stat_obj['object'], p=stat_obj["predicate"], o=main_obj, qp=qp, qe=qual_o))
+                            to_dump.append(Quint(s=stat_obj['subject'], p=stat_obj["predicate"], o=main_obj, qp=qp, qe=qual_o))
             pickle.dump(to_dump, open(to_pkl, "wb+"))
+
+    except (FileNotFoundError, IOError):
+        print("Files not found, check if you cloned the dataset")
+
+def parse_wikipeople_quints_no_literals():
+    """
+            Assuming there is a path ./data/WikiPeople
+            :return: train/val/test in pickle files where complex statements of multiple qualifiers are split into separate quints
+            stripped of literals
+        """
+    templ = """ << {0!s} {1!s} {2!s} >> {3!s} {4!s} . \n"""
+    SOURCE_DIR = Path("./data/raw_data/wikipeople")
+    TARGET_DIR = Path("./data/parsed_data/wikipeople")
+    try:
+        files = list(SOURCE_DIR.glob("*.json"))
+        print(files)
+        for f in files:
+            to_pkl = str(f).split(".json")[0].split("_")[-1] + "_quints.pkl"
+            to_dump = []
+            with open(str(f), "r") as sourcef:
+                for line in sourcef:
+                    stat_obj = {}
+                    stat_obj["qualifiers"] = []
+                    statement = json.loads(line)
+                    for k in list(statement.keys()):
+                        if "_h" in k:
+                            stat_obj["subject"] = statement[k]
+                            stat_obj["predicate"] = k.split("_")[0]
+                        elif '_t' in k:
+                            if statement[k][0] == "Q":
+                                stat_obj["object"] = statement[k]
+                        elif k != "N":
+                            stat_obj["qualifiers"].append((k, statement[k]))
+
+                    if "object" not in stat_obj:
+                        continue
+
+                    if len(stat_obj["qualifiers"]) == 0:
+                        to_dump.append(Quint(s=stat_obj["subject"], p=stat_obj["predicate"],
+                                             o=stat_obj["object"], qp=None, qe=None))
+                    else:
+                        # create flat quints from the object
+                        for qp, qe in stat_obj["qualifiers"]:
+                            main_obj = stat_obj["object"]
+                            if qe[0][0] == "Q":
+                                qual_o = qe[0]
+                                to_dump.append(
+                                    Quint(s=stat_obj["subject"], p=stat_obj["predicate"], o=main_obj, qp=qp, qe=qual_o))
+                            else:
+                                continue
+            to_dump = list(set(to_dump))
+            print(f"In {str(f)}: Total quints: {len(to_dump)}, with qualifiers: {len([i for i in to_dump if i[3] is not None])}")
+            pickle.dump(to_dump, open(TARGET_DIR / to_pkl, "wb+"))
+
+    except (FileNotFoundError, IOError):
+        print("Files not found, check if you cloned the dataset")
+
+def parse_wikipeople_triples_no_literals():
+    """
+                Assuming there is a path ./data/WikiPeople
+                :return: train/val/test in pickle files where complex statements of multiple qualifiers are split into triples
+                stripped of literals
+            """
+    SOURCE_DIR = Path("./data/raw_data/wikipeople")
+    TARGET_DIR = Path("./data/parsed_data/wikipeople")
+    try:
+        files = list(SOURCE_DIR.glob("*.json"))
+        print(files)
+        for f in files:
+            to_pkl = str(f).split(".json")[0].split("_")[-1] + "_triples.pkl"
+            to_dump = []
+            with open(str(f), "r") as sourcef:
+                for line in sourcef:
+                    stat_obj = {}
+
+                    statement = json.loads(line)
+                    for k in list(statement.keys()):
+                        if "_h" in k:
+                            stat_obj["subject"] = statement[k]
+                            stat_obj["predicate"] = k.split("_")[0]
+                        elif '_t' in k:
+                            if statement[k][0] == "Q":
+                                stat_obj["object"] = statement[k]
+
+                    if "object" not in stat_obj:
+                        continue
+
+                    to_dump.append((stat_obj["subject"], stat_obj["predicate"], stat_obj["object"]))
+
+            to_dump = list(set(to_dump))
+            print(f"In {str(f)}: Total triples: {len(to_dump)}")
+            pickle.dump(to_dump, open(TARGET_DIR / to_pkl, "wb+"))
 
     except (FileNotFoundError, IOError):
         print("Files not found, check if you cloned the dataset")
@@ -132,6 +224,4 @@ def parse_wikipeople_std_reif():
         print("Files not found, check if you cloned the dataset")
 
 if __name__ == "__main__":
-    parse_wikipeople()
-    parse_wikipeople_flat_quints()
-    parse_wikipeople_std_reif()
+    parse_wikipeople_triples_no_literals()
