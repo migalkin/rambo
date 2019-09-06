@@ -96,6 +96,98 @@ def load_wd15k_triples() -> Dict:
 
     return {"train": train, "valid": valid, "test": test, "num_entities": len(triples_entities), "num_relations": len(triples_predicates)}
 
+
+def load_wikipeople_quints() -> Dict:
+    """
+
+    :return: train/valid/test splits for the wikipeople dataset in its quints form
+    """
+    # Load data from disk
+    WP_DIR = PARSED_DATA_DIR / 'wikipeople'
+
+    with open(WP_DIR/ 'train_quints.pkl', 'rb') as f:
+        train_quints = pickle.load(f)
+    with open(WP_DIR/ 'valid_quints.pkl', 'rb') as f:
+        valid_quints = pickle.load(f)
+    with open(WP_DIR/ 'test_quints.pkl', 'rb') as f:
+        test_quints = pickle.load(f)
+
+    quints_entities, quints_predicates = [], []
+
+    for quint in train_quints+valid_quints+test_quints:
+        quints_entities += [quint[0], quint[2]]
+        if quint[4]:
+            quints_entities.append(quint[4])
+
+        quints_predicates.append(quint[1])
+        if quint[3]:
+            quints_predicates.append(quint[3])
+
+    quints_entities = sorted(list(set(quints_entities)))
+    quints_predicates = sorted(list(set(quints_predicates)))
+
+    q_entities = ['__na__'] + quints_entities
+    q_predicates = ['__na__'] + quints_predicates
+
+    # uritoid = {ent: i for i, ent in enumerate(['__na__', '__pad__'] + entities +  predicates)}
+    entoid = {pred: i for i, pred in enumerate(q_entities)}
+    prtoid = {pred: i for i, pred in enumerate(q_predicates)}
+
+    train = [[entoid[q[0]],
+              prtoid[q[1]],
+              entoid[q[2]],
+              prtoid[q[3]] if q[3] is not None else prtoid['__na__'],
+              entoid[q[4]] if q[4] is not None else entoid['__na__']] for q in train_quints]
+    valid = [[entoid[q[0]],
+              prtoid[q[1]],
+              entoid[q[2]],
+              prtoid[q[3]] if q[3] is not None else prtoid['__na__'],
+              entoid[q[4]] if q[4] is not None else entoid['__na__']] for q in valid_quints]
+    test = [[entoid[q[0]],
+             prtoid[q[1]],
+             entoid[q[2]],
+             prtoid[q[3]] if q[3] is not None else prtoid['__na__'],
+             entoid[q[4]] if q[4] is not None else entoid['__na__']] for q in test_quints]
+
+    return {"train": train, "valid": valid, "test": test, "num_entities": len(q_entities), "num_relations": len(q_predicates)}
+
+
+def load_wikipeople_triples():
+    """
+
+    :return: train/valid/test splits for the wikipeople dataset in its triples form
+    """
+    # Load data from disk
+    WP_DIR = PARSED_DATA_DIR / 'wikipeople'
+
+    with open(WP_DIR / 'train_triples.pkl', 'rb') as f:
+        train_triples = pickle.load(f)
+    with open(WP_DIR / 'valid_triples.pkl', 'rb') as f:
+        valid_triples = pickle.load(f)
+    with open(WP_DIR / 'test_triples.pkl', 'rb') as f:
+        test_triples = pickle.load(f)
+
+    triples_entities, triples_predicates = [], []
+
+    for triple in train_triples + valid_triples + test_triples:
+        triples_entities += [triple[0], triple[2]]
+        triples_predicates.append(triple[1])
+
+    triples_entities = sorted(list(set(triples_entities)))
+    triples_predicates = sorted(list(set(triples_predicates)))
+
+    # uritoid = {ent: i for i, ent in enumerate(['__na__', '__pad__'] + entities +  predicates)}
+    entoid = {pred: i for i, pred in enumerate(triples_entities)}
+    prtoid = {pred: i for i, pred in enumerate(triples_predicates)}
+
+    train = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in train_triples]
+    valid = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in valid_triples]
+    test = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in test_triples]
+
+    return {"train": train, "valid": valid, "test": test, "num_entities": len(triples_entities),
+            "num_relations": len(triples_predicates)}
+
+
 def load_fb15k237() -> Dict:
     RAW_DATA_DIR = Path('./data/raw_data/fb15k237')
 
@@ -175,6 +267,11 @@ class DataManager(object):
                 return load_wd15k_quints
             else:
                 return load_wd15k_triples
+        elif config['DATASET'] == 'wikipeople':
+            if config['IS_QUINTS']:
+                return load_wikipeople_quints
+            else:
+                return load_wikipeople_triples
         elif config['DATASET'] == 'fb15k':
             return load_fb15k
         elif config['DATASET'] == 'fb15k237':
@@ -220,6 +317,9 @@ class DataManager(object):
 
 
 if __name__ == "__main__":
-    ds = load_fb15k237()
-    ds1 = load_wd15k_quints()
-    ds2 = load_wd15k_triples()
+    #ds = load_fb15k237()
+    #ds1 = load_wd15k_quints()
+    #ds2 = load_wd15k_triples()
+    ds3 = load_wikipeople_quints()
+    ds4 = load_wikipeople_triples()
+    print(len(ds4))
