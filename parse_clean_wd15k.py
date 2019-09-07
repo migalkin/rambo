@@ -11,15 +11,18 @@ from parse_wd15k import Quint
 
 RAW_DATA_DIR = Path('./data/raw_data/wd15k')
 WD15K_DATA_DIR = Path('./data/parsed_data/wd15k')
+WD15K_QONLY = Path('./data/parsed_data/wd15k_qonly')
 np.random.seed(42)
 
-def split_statements(path) -> Tuple[List, List, List]:
+def split_statements(path, filter_qualifiers:bool) -> Tuple[List, List, List]:
     """
     Split into 70/10/20
     :param path: path to the cleaned_wd15k.pkl file
     :return: splits for train, valid, test
     """
     ds = pickle.load(open(path / "cleaned_wd15k.pkl", "rb"))
+    if filter_qualifiers:
+        ds = keep_only_quals(ds)
     ind = np.arange(len(ds))
     np.random.shuffle(ind)
     train_indices, valid_indices, test_indices = ind[:int(0.7 * len(ind))], ind[int(0.7 * len(ind)):int(
@@ -29,9 +32,9 @@ def split_statements(path) -> Tuple[List, List, List]:
     valid = [ds[i] for i in valid_indices]
     test = [ds[i] for i in test_indices]
 
-    # ds_stats(train)
-    # ds_stats(valid)
-    # ds_stats(test)
+    ds_stats(train)
+    ds_stats(valid)
+    ds_stats(test)
 
     return (train, valid, test)
 
@@ -87,9 +90,18 @@ def ds_stats(dataset: List[Dict]):
         print(f"{m}: {len([a for a in dataset if len(a['qualifiers']) == m])}")
 
 
+def keep_only_quals(ds: List[Dict]):
+    """
+
+    :param ds: set of statements
+    :return: dataset with statements that have at least one qualifier
+    """
+    return [i for i in ds if len(i["qualifiers"]) > 0]
+
 if __name__ == "__main__":
+    only_q = True
     # split the dataset into train/val/test
-    train, val, test = split_statements(RAW_DATA_DIR)
+    train, val, test = split_statements(RAW_DATA_DIR, filter_qualifiers=only_q)
     # convert each chunk into triples/quints/full quints
     train_triples, valid_triples, test_triples = generate_triples(train), generate_triples(val), generate_triples(test)
     train_quints, valid_quints, test_quints = generate_quints(train), generate_quints(val), generate_quints(test)
@@ -98,39 +110,43 @@ if __name__ == "__main__":
     print(f"Quints: {len(train_quints)} train, {len(valid_quints)} val, {len(test_quints)} test")
     print(f"Statements: {len(train_statements)} train, {len(valid_statements)} val, {len(test_statements)} test")
     # write files
-    with open(WD15K_DATA_DIR / 'train_quints.pkl', 'wb+') as f:
+    if not only_q:
+        output_dir = WD15K_DATA_DIR
+    else:
+        output_dir = WD15K_QONLY
+    with open(output_dir / 'train_quints.pkl', 'wb+') as f:
         pickle.dump(train_quints, f)
         print(f" Writing {len(train_quints)} training quints")
 
-    with open(WD15K_DATA_DIR / 'valid_quints.pkl', 'wb+') as f:
+    with open(output_dir / 'valid_quints.pkl', 'wb+') as f:
         pickle.dump(valid_quints, f)
         print(f" Writing {len(valid_quints)} valid quints")
 
-    with open(WD15K_DATA_DIR / 'test_quints.pkl', 'wb+') as f:
+    with open(output_dir / 'test_quints.pkl', 'wb+') as f:
         pickle.dump(test_quints, f)
         print(f" Writing {len(test_quints)} test quints")
 
-    with open(WD15K_DATA_DIR / 'train_triples.pkl', 'wb+') as f:
+    with open(output_dir / 'train_triples.pkl', 'wb+') as f:
         pickle.dump(train_triples, f)
         print(f" Writing {len(train_triples)} training triples")
 
-    with open(WD15K_DATA_DIR / 'valid_triples.pkl', 'wb+') as f:
+    with open(output_dir / 'valid_triples.pkl', 'wb+') as f:
         pickle.dump(valid_triples, f)
         print(f" Writing {len(valid_triples)} valid triples")
 
-    with open(WD15K_DATA_DIR / 'test_triples.pkl', 'wb+') as f:
+    with open(output_dir / 'test_triples.pkl', 'wb+') as f:
         pickle.dump(test_triples, f)
         print(f" Writing {len(test_triples)} test triples")
 
-    with open(WD15K_DATA_DIR / 'train_statements.pkl', 'wb+') as f:
+    with open(output_dir / 'train_statements.pkl', 'wb+') as f:
         pickle.dump(train_statements, f)
         print(f" Writing {len(train_statements)} training statements")
 
-    with open(WD15K_DATA_DIR / 'valid_statements.pkl', 'wb+') as f:
+    with open(output_dir / 'valid_statements.pkl', 'wb+') as f:
         pickle.dump(valid_statements, f)
         print(f" Writing {len(valid_statements)} valid statements")
 
-    with open(WD15K_DATA_DIR / 'test_statements.pkl', 'wb+') as f:
+    with open(output_dir / 'test_statements.pkl', 'wb+') as f:
         pickle.dump(test_statements, f)
         print(f" Writing {len(test_statements)} test statements")
 
