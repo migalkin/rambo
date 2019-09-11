@@ -57,7 +57,8 @@ DEFAULT_CONFIG = {
     'DATASET': 'wd15k',
     'CORRUPTION_POSITIONS': [0, 2],
     'DEVICE': 'cuda',
-    'ENT_POS_FILTERED': True
+    'ENT_POS_FILTERED': True,
+    'USE_TEST': False
 }
 
 if __name__ == "__main__":
@@ -130,8 +131,14 @@ if __name__ == "__main__":
     """
         Prepare test benches
     """
-    data = {'index': np.array(training_triples + test_triples), 'eval': np.array(valid_triples)}
-    _data = {'index': np.array(valid_triples + test_triples), 'eval': np.array(training_triples)}
+    if config['USE_TEST']:
+        data = {'index': np.array(training_triples + valid_triples), 'eval': np.array(test_triples)}
+        _data = {'index': np.array(valid_triples + test_triples), 'eval': np.array(training_triples)}
+        tr_data = {'train': np.array(training_triples + valid_triples), 'valid': data['eval']}
+    else:
+        data = {'index': np.array(training_triples + test_triples), 'eval': np.array(valid_triples)}
+        _data = {'index': np.array(valid_triples + test_triples), 'eval': np.array(training_triples)}
+        tr_data = {'train': np.array(training_triples), 'valid': data['eval']}
 
     eval_metrics = [acc, mrr, mr, partial(hits_at, k=3), partial(hits_at, k=5), partial(hits_at, k=10)]
     evaluation_valid = EvaluationBench(data, model, bs=8000,
@@ -145,12 +152,9 @@ if __name__ == "__main__":
                                        excluding_entities=ent_excluded_from_corr,
                                        positions=config.get('CORRUPTION_POSITIONS', None), trim=0.01)
 
-    # RE-org the data
-    data = {'train': data['index'], 'valid': data['eval']}
-
     args = {
         "epochs": config['EPOCHS'],
-        "data": data,
+        "data": tr_data,
         "opt": optimizer,
         "train_fn": model,
         "neg_generator": Corruption(n=num_entities, excluding=ent_excluded_from_corr,
