@@ -159,6 +159,47 @@ def load_wd15k_statements() -> Dict:
             "num_relations": len(st_predicates)}
 
 
+def load_wd15k_qonly_statements() -> Dict:
+    # Load data from disk
+    WD15K_DIR = PARSED_DATA_DIR / 'wd15k_qonly'
+    with open(WD15K_DIR / 'train_statements.pkl', 'rb') as f:
+        train_statements = pickle.load(f)
+    with open(WD15K_DIR / 'valid_statements.pkl', 'rb') as f:
+        valid_statements = pickle.load(f)
+    with open(WD15K_DIR / 'test_statements.pkl', 'rb') as f:
+        test_statements = pickle.load(f)
+
+    statement_entities, statement_predicates = _get_uniques_(train_data=train_statements,
+                                                             valid_data=valid_statements,
+                                                             test_data=test_statements)
+
+    st_entities = ['__na__'] + statement_entities
+    st_predicates = ['__na__'] + statement_predicates
+
+    entoid = {pred: i for i, pred in enumerate(st_entities)}
+    prtoid = {pred: i for i, pred in enumerate(st_predicates)}
+
+    train, valid, test = [], [], []
+    for st in train_statements:
+        id_st = []
+        for i, uri in enumerate(st):
+            id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
+        train.append(id_st)
+    for st in valid_statements:
+        id_st = []
+        for i, uri in enumerate(st):
+            id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
+        valid.append(id_st)
+    for st in test_statements:
+        id_st = []
+        for i, uri in enumerate(st):
+            id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
+        test.append(id_st)
+
+    return {"train": train, "valid": valid, "test": test, "num_entities": len(st_entities),
+            "num_relations": len(st_predicates)}
+
+
 def load_wd15k_qonly_quints() -> Dict:
     # Load data from disk
     WD15K_DIR = PARSED_DATA_DIR / 'wd15k_qonly'
@@ -415,15 +456,17 @@ class DataManager(object):
             else:
                 return load_wd15k_statements
         elif config['DATASET'] == 'wikipeople':
-            if config['IS_QUINTS']:
+            if config['STATEMENT_LEN'] == 5:
                 return load_wikipeople_quints
             else:
                 return load_wikipeople_triples
         elif config['DATASET'] == 'wd15k_qonly':
-            if config['IS_QUINTS']:
+            if config['STATEMENT_LEN'] == 5:
                 return load_wd15k_qonly_quints
-            else:
+            elif config['STATEMENT_LEN'] == 3:
                 return load_wd15k_qonly_triples
+            else:
+                return load_wd15k_qonly_statements
         elif config['DATASET'] == 'fb15k':
             return load_fb15k
         elif config['DATASET'] == 'fb15k237':
@@ -482,4 +525,5 @@ if __name__ == "__main__":
     ts = ds['test']
     ne = ds['num_entities']
     nr = ds['num_relations']
+    ds5 = load_wd15k_qonly_statements()
     print("Magic Mike!")
