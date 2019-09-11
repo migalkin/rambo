@@ -3,7 +3,6 @@
 """
 
 from functools import partial
-from pprint import pprint
 import random
 import wandb
 import sys
@@ -50,12 +49,12 @@ DEFAULT_CONFIG = {
     'NEGATIVE_SAMPLING_TIMES': 10,
     'BATCH_SIZE': 64,
     'EPOCHS': 1000,
-    'IS_QUINTS': None,
+    'STATEMENT_LEN': None,
     'EVAL_EVERY': 10,
     'WANDB': True,
     'RUN_TESTBENCH_ON_TRAIN': True,
     'DATASET': 'wd15k',
-    'CORRUPTION_POSITIONS': [0, 2],
+    'CORRUPTION_POSITIONS': None,
     'DEVICE': 'cuda',
     'ENT_POS_FILTERED': True,
     'USE_TEST': False
@@ -82,13 +81,12 @@ if __name__ == "__main__":
 
     # Custom Sanity Checks
     if DEFAULT_CONFIG['DATASET'] == 'wd15k':
-        assert DEFAULT_CONFIG['IS_QUINTS'] is not None, "You use WD15k dataset and don't specify whether to treat them " \
-                                                     "as quints or not. Nicht cool'"
+        assert DEFAULT_CONFIG['STATEMENT_LEN'] is not None, \
+            "You use WD15k dataset and don't specify whether to treat them as quints or not. Nicht cool'"
     if max(DEFAULT_CONFIG['CORRUPTION_POSITIONS']) > 2:     # If we're corrupting something apart from S and O
-        assert DEFAULT_CONFIG['ENT_POS_FILTERED'] is False, f"Since we're corrupting objects at pos. " \
-                                                            f"{DEFAULT_CONFIG['CORRUPTION_POSITIONS']}," \
-                                                            f"You must allow including entities which appear" \
-                                                            f"exclusively in qualifiers, too!"
+        assert DEFAULT_CONFIG['ENT_POS_FILTERED'] is False, \
+            f"Since we're corrupting objects at pos. {DEFAULT_CONFIG['CORRUPTION_POSITIONS']}, " \
+            f"You must allow including entities which appear exclusively in qualifiers, too!"
 
     """
         Load data based on the args/config
@@ -152,13 +150,15 @@ if __name__ == "__main__":
                                        excluding_entities=ent_excluded_from_corr,
                                        positions=config.get('CORRUPTION_POSITIONS', None), trim=0.01)
 
+
+
     args = {
         "epochs": config['EPOCHS'],
         "data": tr_data,
         "opt": optimizer,
         "train_fn": model,
         "neg_generator": Corruption(n=num_entities, excluding=ent_excluded_from_corr,
-                                    position=config.get('CORRUPTION_POSITIONS', [0, 2, 4] if config['IS_QUINTS'] else [0, 2])),
+                                    position=config.get('CORRUPTION_POSITIONS')),
         "device": config['DEVICE'],
         "data_fn": partial(SimpleSampler, bs=config["BATCH_SIZE"]),
         "eval_fn_trn": evaluate_pointwise,

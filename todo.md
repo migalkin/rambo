@@ -10,3 +10,9 @@
 1. Write nice data loaders, clean, out of the way...
 
 # ADD MORE TESTS!
+
+## Refactoring 
+1. Don't assume a given corruption position. By default it should be None.
+    If it is none, you should corrupt `[::2]`th of the data.
+    
+2. IS_QUINTS is no longer needed. Swapped for STATEMENT_LEN

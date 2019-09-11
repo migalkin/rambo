@@ -113,6 +113,9 @@ class TransE(BaseModule):
 
         self._initialize()
 
+        # Make pad index zero. # TODO: Should pad index be configurable? Probably not, right? Cool? Cool.
+        self.entity_embeddings.weight[0] = 0
+
     def _initialize(self):
         embeddings_init_bound = 6 / np.sqrt(self.config['EMBEDDING_DIM'])
         nn.init.uniform_(
