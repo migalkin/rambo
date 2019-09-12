@@ -20,6 +20,11 @@ def _get_uniques_(train_data: List[tuple], valid_data: List[tuple], test_data: L
     return statement_entities, statement_predicates
 
 
+def _pad_statements_(data: List[list], maxlen:int) -> List[list]:
+    """ Padding index is always 0 as in the embedding layers of models. Cool? Cool. """
+    result = [statement + [0]*(maxlen - len(statement)) for statement in data]
+    return result
+
 def load_wd15k_quints() -> Dict:
     """
 
@@ -138,6 +143,8 @@ def load_wd15k_statements() -> Dict:
     entoid = {pred: i for i, pred in enumerate(st_entities)}
     prtoid = {pred: i for i, pred in enumerate(st_predicates)}
 
+    max_s_len = max([len(i) for i in train_statements+valid_statements+test_statements])
+
     train, valid, test = [], [], []
     for st in train_statements:
         id_st = []
@@ -154,6 +161,8 @@ def load_wd15k_statements() -> Dict:
         for i, uri in enumerate(st):
             id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
         test.append(id_st)
+
+    train, valid, test = _pad_statements_(train, max_s_len), _pad_statements_(valid, max_s_len), _pad_statements_(test, max_s_len)
 
     return {"train": train, "valid": valid, "test": test, "num_entities": len(st_entities),
             "num_relations": len(st_predicates)}
@@ -179,6 +188,8 @@ def load_wd15k_qonly_statements() -> Dict:
     entoid = {pred: i for i, pred in enumerate(st_entities)}
     prtoid = {pred: i for i, pred in enumerate(st_predicates)}
 
+    max_s_len = max([len(i) for i in train_statements + valid_statements + test_statements])
+
     train, valid, test = [], [], []
     for st in train_statements:
         id_st = []
@@ -195,6 +206,9 @@ def load_wd15k_qonly_statements() -> Dict:
         for i, uri in enumerate(st):
             id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
         test.append(id_st)
+
+    train, valid, test = _pad_statements_(train, max_s_len), _pad_statements_(valid, max_s_len), _pad_statements_(test,
+                                                                                                                  max_s_len)
 
     return {"train": train, "valid": valid, "test": test, "num_entities": len(st_entities),
             "num_relations": len(st_predicates)}
