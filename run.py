@@ -49,15 +49,16 @@ DEFAULT_CONFIG = {
     'NEGATIVE_SAMPLING_TIMES': 10,
     'BATCH_SIZE': 64,
     'EPOCHS': 1000,
-    'STATEMENT_LEN': None,
+    'STATEMENT_LEN': -1,
     'EVAL_EVERY': 10,
-    'WANDB': True,
+    'WANDB': False,
     'RUN_TESTBENCH_ON_TRAIN': True,
     'DATASET': 'wd15k',
-    'CORRUPTION_POSITIONS': None,
-    'DEVICE': 'cuda',
+    'CORRUPTION_POSITIONS': [0, 2],
+    'DEVICE': 'cpu',
     'ENT_POS_FILTERED': True,
-    'USE_TEST': False
+    'USE_TEST': False,
+    'MAX_QPAIRS': 43
 }
 
 if __name__ == "__main__":

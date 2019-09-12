@@ -3,6 +3,7 @@
 """
 import operator
 from utils import *
+from functools import partial
 
 
 def _get_uniques_(train_data: List[tuple], valid_data: List[tuple], test_data: List[tuple]) -> (list, list):
@@ -20,9 +21,9 @@ def _get_uniques_(train_data: List[tuple], valid_data: List[tuple], test_data: L
     return statement_entities, statement_predicates
 
 
-def _pad_statements_(data: List[list], maxlen:int) -> List[list]:
+def _pad_statements_(data: List[list], maxlen: int) -> List[list]:
     """ Padding index is always 0 as in the embedding layers of models. Cool? Cool. """
-    result = [statement + [0]*(maxlen - len(statement)) for statement in data]
+    result = [statement + [0]*(maxlen - len(statement)) if len(statement) < maxlen else statement[:maxlen] for statement in data]
     return result
 
 def load_wd15k_quints() -> Dict:
@@ -118,7 +119,7 @@ def load_wd15k_triples() -> Dict:
             "num_relations": len(triples_predicates)}
 
 
-def load_wd15k_statements() -> Dict:
+def load_wd15k_statements(maxlen: int) -> Dict:
     """
         Pull up data from parsed data (thanks magic mike!) and preprocess it to death.
     :return: dict
@@ -143,8 +144,6 @@ def load_wd15k_statements() -> Dict:
     entoid = {pred: i for i, pred in enumerate(st_entities)}
     prtoid = {pred: i for i, pred in enumerate(st_predicates)}
 
-    max_s_len = max([len(i) for i in train_statements+valid_statements+test_statements])
-
     train, valid, test = [], [], []
     for st in train_statements:
         id_st = []
@@ -162,13 +161,13 @@ def load_wd15k_statements() -> Dict:
             id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
         test.append(id_st)
 
-    train, valid, test = _pad_statements_(train, max_s_len), _pad_statements_(valid, max_s_len), _pad_statements_(test, max_s_len)
+    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid, maxlen), _pad_statements_(test ,maxlen)
 
     return {"train": train, "valid": valid, "test": test, "num_entities": len(st_entities),
             "num_relations": len(st_predicates)}
 
 
-def load_wd15k_qonly_statements() -> Dict:
+def load_wd15k_qonly_statements(maxlen: int) -> Dict:
     # Load data from disk
     WD15K_DIR = PARSED_DATA_DIR / 'wd15k_qonly'
     with open(WD15K_DIR / 'train_statements.pkl', 'rb') as f:
@@ -188,8 +187,6 @@ def load_wd15k_qonly_statements() -> Dict:
     entoid = {pred: i for i, pred in enumerate(st_entities)}
     prtoid = {pred: i for i, pred in enumerate(st_predicates)}
 
-    max_s_len = max([len(i) for i in train_statements + valid_statements + test_statements])
-
     train, valid, test = [], [], []
     for st in train_statements:
         id_st = []
@@ -207,8 +204,7 @@ def load_wd15k_qonly_statements() -> Dict:
             id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
         test.append(id_st)
 
-    train, valid, test = _pad_statements_(train, max_s_len), _pad_statements_(valid, max_s_len), _pad_statements_(test,
-                                                                                                                  max_s_len)
+    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid, maxlen), _pad_statements_(test, maxlen)
 
     return {"train": train, "valid": valid, "test": test, "num_entities": len(st_entities),
             "num_relations": len(st_predicates)}
@@ -468,7 +464,7 @@ class DataManager(object):
             elif config['STATEMENT_LEN'] == 3:
                 return load_wd15k_triples
             else:
-                return load_wd15k_statements
+                return partial(load_wd15k_statements, maxlen=config['MAX_QPAIRS'])
         elif config['DATASET'] == 'wikipeople':
             if config['STATEMENT_LEN'] == 5:
                 return load_wikipeople_quints
@@ -480,7 +476,7 @@ class DataManager(object):
             elif config['STATEMENT_LEN'] == 3:
                 return load_wd15k_qonly_triples
             else:
-                return load_wd15k_qonly_statements
+                return partial(load_wd15k_qonly_statements, maxlen=config['MAX_QPAIRS'])
         elif config['DATASET'] == 'fb15k':
             return load_fb15k
         elif config['DATASET'] == 'fb15k237':
@@ -533,11 +529,11 @@ if __name__ == "__main__":
     # ds4 = load_wd15k_qonly_triples()
     # print(len(ds4))
 
-    ds = load_wd15k_statements()
+    ds = load_wd15k_statements(maxlen=43)
     tr = ds['train']
     vl = ds['valid']
     ts = ds['test']
     ne = ds['num_entities']
     nr = ds['num_relations']
-    ds5 = load_wd15k_qonly_statements()
+    ds5 = load_wd15k_qonly_statements(maxlen=43)
     print("Magic Mike!")
