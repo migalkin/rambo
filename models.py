@@ -75,7 +75,7 @@ def slice_triples(triples: torch.Tensor, slices=5) :
     elif slices == 3:
         return triples[:, 0], triples[:, 1], triples[:, 2]
     else:
-        raise UnknownSliceLength
+        return triples[:, 0], triples[:, 2::2], triples[:, 1::2] # subject, all other entities, all relations
 
 
 class TransE(BaseModule):
@@ -102,7 +102,7 @@ class TransE(BaseModule):
         self.entity_embedding_norm_type: int = 2
         self.model_name = 'TransE MM'
         super().__init__(config)
-        self.quints = config['IS_QUINTS']
+        self.statement_len = config['STATEMENT_LEN']
 
         # Embeddings
         self.l_p_norm_entities = config['NORM_FOR_NORMALIZATION_OF_ENTITIES']
@@ -168,15 +168,19 @@ class TransE(BaseModule):
         :param qual_relation_embeddings: embeddings of qualifier entities of dimension batchsize x embedding_dim
         :return: Tensor of dimension batch_size containing the scores for each batch element
         """
-        sum_res = head_embeddings + relation_embeddings - tail_embeddings
-        if qual_relation_embeddings is not None and qual_entity_embeddings is not None:
-            sum_res = sum_res + qual_relation_embeddings - qual_entity_embeddings
-        # Add the vector element wise
+        if self.statement_len != -1:
+            sum_res = head_embeddings + relation_embeddings - tail_embeddings
+            if qual_relation_embeddings is not None and qual_entity_embeddings is not None:
+                sum_res = sum_res + qual_relation_embeddings - qual_entity_embeddings
+            # Add the vector element wise
+        else:
+            # use formula head + sum(relations - tails)
+            sum_res = head_embeddings + torch.sum(relation_embeddings-tail_embeddings, dim=1)
         distances = torch.norm(sum_res, dim=1, p=self.scoring_fct_norm).view(size=(-1,))
         return distances
 
     def _get_triple_embeddings(self, triples):
-        if self.quints:
+        if self.statement_len == 5:
             heads, relations, tails, qual_relations, qual_entities = slice_triples(triples, 5)
             return (
                 self._get_entity_embeddings(heads),
@@ -186,13 +190,21 @@ class TransE(BaseModule):
                 self._get_entity_embeddings(qual_entities)
             )
 
-        else:
+        elif self.statement_len == 3:
             heads, relations, tails = slice_triples(triples, 3 )
-        return (
-            self._get_entity_embeddings(heads),
-            self._get_relation_embeddings(relations),
-            self._get_entity_embeddings(tails)
-        )
+            return (
+                self._get_entity_embeddings(heads),
+                self._get_relation_embeddings(relations),
+                self._get_entity_embeddings(tails)
+            )
+        else:
+            head, statement_entities, statement_relations = slice_triples(triples)
+            return (
+                self._get_entity_embeddings(head),
+                self._get_entity_embeddings(statement_relations),
+                self._get_entity_embeddings(statement_entities)
+            )
+
 
     def _get_relation_embeddings(self, relations):
         return self.relation_embeddings(relations).view(-1, self.embedding_dim)
