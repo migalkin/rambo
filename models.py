@@ -95,7 +95,6 @@ class TransE(BaseModule):
     model_name = 'TransE MM'
     
     def __init__(self, config) -> None:
-        
 
         self.margin_ranking_loss_size_average: bool = True
         self.entity_embedding_max_norm: Optional[int] = None
@@ -115,6 +114,7 @@ class TransE(BaseModule):
 
         # Make pad index zero. # TODO: Should pad index be configurable? Probably not, right? Cool? Cool.
         self.entity_embeddings.weight[0] = 0
+        self.relation_embeddings.weight[0] = 0
 
     def _initialize(self):
         embeddings_init_bound = 6 / np.sqrt(self.config['EMBEDDING_DIM'])
@@ -201,10 +201,9 @@ class TransE(BaseModule):
             head, statement_entities, statement_relations = slice_triples(triples)
             return (
                 self._get_entity_embeddings(head),
-                self._get_entity_embeddings(statement_relations),
-                self._get_entity_embeddings(statement_entities)
+                self.relation_embeddings(statement_relations),
+                self.entity_embeddings(statement_entities)
             )
-
 
     def _get_relation_embeddings(self, relations):
         return self.relation_embeddings(relations).view(-1, self.embedding_dim)

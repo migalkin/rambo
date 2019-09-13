@@ -71,7 +71,7 @@ class QuintRankingSampler:
 
         self.neg_times = self.neg[0].__len__()
 
-        # Repate pos
+        # Repeat pos
         repeat_pos = []
         for pos in self.pos:
             repeat_pos += [pos for _ in range(self.neg_times)]

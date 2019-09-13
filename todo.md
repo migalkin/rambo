@@ -16,3 +16,6 @@
     If it is none, you should corrupt `[::2]`th of the data.
     
 2. IS_QUINTS is no longer needed. Swapped for STATEMENT_LEN
+3. After changing the model, check if embeddings for zero are not changed
+    3.1 Saving the model
+4. Inflecting relations

@@ -138,6 +138,95 @@ class EvaluationBench:
         return summary
 
 
+class EvaluationBenchArity(EvaluationBench):
+    """
+        Sampler like evaluationbench but with expressions of different arity grouped together
+    """
+
+
+    @staticmethod
+    def summarize_run(summary: dict):
+        """ Nicely print what just went down """
+        print(f"This run over {summary['data_length']} datapoints took "
+              f"%(time).3f min" % {'time': summary['time_taken'] / 60.0})
+        print("---------\n")
+        for k, v in summary['metrics'].items():
+            print(k, ':', "%(v).4f" % {'v': v})
+
+        print("+++++++++ BINARY +++++++++\n")
+        for k, v in summary['binary_metrics'].items():
+            print(k, ':', "%(v).4f" % {'v': v})
+
+        print("+++++++++ NARY +++++++++\n")
+        for k, v in summary['nary_metrics'].items():
+            print(k, ':', "%(v).4f" % {'v': v})
+
+    def run(self, *args, **kwargs):
+        """
+            See docstrings of superclass to know what run does.
+            DIFF:
+                Instead of corrupting for a fixed position, here corruption positions depend upon the pos data.
+        """
+        metrics = []
+        binary_metrics, nary_metrics = [], []
+
+        with Timer() as timer:
+            with torch.no_grad():
+                for positive_data in tqdm(self.data_eval):
+
+                    metric_across_positions = []
+
+                    # Find corrupting positions (last nonzero item index + 1)
+                    corr_pos = range(0, positive_data.nonzero()[0].max()+1, 2)
+
+                    # For all positions, inflect all data and take the mean.
+                    for position in corr_pos:
+
+                        neg = self.corrupter.corrupt_one_position(positive_data, position)
+
+                        if len(neg) + 1 < self.bs:  # Can do it in one iteration
+
+                            x = torch.tensor(np.vstack((positive_data.transpose(), neg)), dtype=torch.long,
+                                             device=self.model.config['DEVICE'])
+                            scores = self.model.predict(x)
+
+                        else:
+                            scores = torch.tensor([], dtype=torch.float, device=self.model.config['DEVICE'])
+
+                            for i in range(neg.shape[0])[::self.bs]:  # Break it down into batches and then do dis
+                                _neg = neg[i: i + self.bs]
+                                if i == 0:
+                                    x = torch.tensor(np.vstack((positive_data.transpose(), _neg)), dtype=torch.long,
+                                                     device=self.model.config['DEVICE'])
+                                else:
+                                    x = torch.tensor(_neg, dtype=torch.long, device=self.model.config['DEVICE'])
+                                _scores = self.model.predict(x)
+
+                                scores = torch.cat((scores, _scores))
+
+                        _metrics = self._compute_metric_(scores)
+                        metric_across_positions.append(_metrics)
+
+                    metrics.append(np.mean(metric_across_positions, axis=0))
+                    if len(corr_pos)>2:
+                        nary_metrics.append(np.mean(metric_across_positions, axis=0))
+                    else:
+                        binary_metrics.append(np.mean(metric_across_positions, axis=0))
+
+                    # Spruce up the summary with more information
+                time_taken = timer.interval
+                metrics = self._summarize_metrics_(metrics)
+                binary_metrics = self._summarize_metrics_(binary_metrics)
+                nary_metrics = self._summarize_metrics_(nary_metrics)
+                summary = {'metrics': metrics, 'time_taken': time_taken, 'data_length': len(self.data_eval),
+                           'max_len_data': self.max_len_data, 'filtered': self.filtered,
+                           'binary_metrics': binary_metrics, 'nary_metrics': nary_metrics}
+
+                self.summarize_run(summary)
+
+                return summary
+
+
 def acc(scores: torch.Tensor) -> np.float:
     """ Accepts a (n, ) tensor """
     return (torch.argmin(scores, dim=0) == 0).float().detach().cpu().numpy().item()

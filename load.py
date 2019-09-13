@@ -26,6 +26,7 @@ def _pad_statements_(data: List[list], maxlen: int) -> List[list]:
     result = [statement + [0]*(maxlen - len(statement)) if len(statement) < maxlen else statement[:maxlen] for statement in data]
     return result
 
+
 def load_wd15k_quints() -> Dict:
     """
 
@@ -104,8 +105,8 @@ def load_wd15k_triples() -> Dict:
         triples_entities += [triple[0], triple[2]]
         triples_predicates.append(triple[1])
 
-    triples_entities = sorted(list(set(triples_entities)))
-    triples_predicates = sorted(list(set(triples_predicates)))
+    triples_entities = ['__na__'] + sorted(list(set(triples_entities)))
+    triples_predicates = ['__na__'] + sorted(list(set(triples_predicates)))
 
     # uritoid = {ent: i for i, ent in enumerate(['__na__', '__pad__'] + entities +  predicates)}
     entoid = {pred: i for i, pred in enumerate(triples_entities)}
@@ -231,8 +232,8 @@ def load_wd15k_qonly_quints() -> Dict:
         if quint[3]:
             quints_predicates.append(quint[3])
 
-    quints_entities = sorted(list(set(quints_entities)))
-    quints_predicates = sorted(list(set(quints_predicates)))
+    quints_entities = ['__na__'] + sorted(list(set(quints_entities)))
+    quints_predicates = ['__na__'] + sorted(list(set(quints_predicates)))
 
     # uritoid = {ent: i for i, ent in enumerate(['__na__', '__pad__'] + entities +  predicates)}
     entoid = {pred: i for i, pred in enumerate(quints_entities)}
@@ -275,8 +276,8 @@ def load_wd15k_qonly_triples() -> Dict:
         triples_entities += [triple[0], triple[2]]
         triples_predicates.append(triple[1])
 
-    triples_entities = sorted(list(set(triples_entities)))
-    triples_predicates = sorted(list(set(triples_predicates)))
+    triples_entities = ['__na__'] + sorted(list(set(triples_entities)))
+    triples_predicates = ['__na__'] + sorted(list(set(triples_predicates)))
 
     # uritoid = {ent: i for i, ent in enumerate(['__na__', '__pad__'] + entities +  predicates)}
     entoid = {pred: i for i, pred in enumerate(triples_entities)}
@@ -290,11 +291,8 @@ def load_wd15k_qonly_triples() -> Dict:
             "num_relations": len(triples_predicates)}
 
 
-def load_wikipeople_quints() -> Dict:
-    """
+def load_wikipeople_quints():
 
-    :return: train/valid/test splits for the wikipeople dataset in its quints form
-    """
     # Load data from disk
     WP_DIR = PARSED_DATA_DIR / 'wikipeople'
 
@@ -316,8 +314,8 @@ def load_wikipeople_quints() -> Dict:
         if quint[3]:
             quints_predicates.append(quint[3])
 
-    quints_entities = sorted(list(set(quints_entities)))
-    quints_predicates = sorted(list(set(quints_predicates)))
+    quints_entities = ['__na__'] + sorted(list(set(quints_entities)))
+    quints_predicates = ['__na__'] + sorted(list(set(quints_predicates)))
 
     q_entities = ['__na__'] + quints_entities
     q_predicates = ['__na__'] + quints_predicates
@@ -347,10 +345,7 @@ def load_wikipeople_quints() -> Dict:
 
 
 def load_wikipeople_triples():
-    """
 
-    :return: train/valid/test splits for the wikipeople dataset in its triples form
-    """
     # Load data from disk
     WP_DIR = PARSED_DATA_DIR / 'wikipeople'
 
@@ -367,8 +362,8 @@ def load_wikipeople_triples():
         triples_entities += [triple[0], triple[2]]
         triples_predicates.append(triple[1])
 
-    triples_entities = sorted(list(set(triples_entities)))
-    triples_predicates = sorted(list(set(triples_predicates)))
+    triples_entities = ['__na__'] + sorted(list(set(triples_entities)))
+    triples_predicates = ['__na__'] + sorted(list(set(triples_predicates)))
 
     # uritoid = {ent: i for i, ent in enumerate(['__na__', '__pad__'] + entities +  predicates)}
     entoid = {pred: i for i, pred in enumerate(triples_entities)}
@@ -382,7 +377,18 @@ def load_wikipeople_triples():
             "num_relations": len(triples_predicates)}
 
 
+def load_wikipeople_statements() -> Dict:
+    """
+        :return: train/valid/test splits for the wikipeople dataset in its quints form
+    """
+    ...
+
+
 def load_fb15k237() -> Dict:
+    """
+        TODO: Shift all entities w 1. ZERO MUST BE PAD
+    :return:
+    """
     RAW_DATA_DIR = Path('./data/raw_data/fb15k237')
 
     training_triples = []
@@ -416,6 +422,10 @@ def load_fb15k237() -> Dict:
 
 
 def load_fb15k() -> Dict:
+    """
+            TODO: Shift all entities w 1. ZERO MUST BE PAD
+        :return:
+        """
     RAW_DATA_DIR = Path('./data/raw_data/fb15k')
 
     training_triples = []
@@ -481,24 +491,6 @@ class DataManager(object):
             return load_fb15k
         elif config['DATASET'] == 'fb15k237':
             return load_fb15k237
-
-    @staticmethod
-    def gather_entities(data: List[list], n_ents: int, positions: List[int]) -> np.array:
-        """
-            NO LONGER USED
-
-            Count the number of entities at particular positions
-                As a bonus, it also excludes entity
-                    which never see the light of the day
-                    in our dataset.
-        """
-        appeared = np.zeros(n_ents, dtype=np.int)
-        for datum in data:
-            for pos in positions:
-                appeared[datum[pos]] = 1
-
-        # Return all the entities which are one.
-        return np.arange(n_ents)[appeared.astype(np.bool)]
 
     @staticmethod
     def gather_missing_entities(data: List[list], n_ents: int, positions: List[int]) -> np.array:

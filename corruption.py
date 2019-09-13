@@ -4,6 +4,7 @@ import numpy as np
 import random
 from tqdm.autonotebook import tqdm
 
+from mytorch.utils.goodies import compute_mask
 from utils import *
 
 
@@ -100,46 +101,6 @@ class Corruption:
         corrupted[:, position] = entities
         return corrupted
 
-    def corrupt_one(self, data: np.array, position: List[int] = None) -> np.array:
-        """
-            NO Longer used
-
-            For corrupting one true data point, every possible manner.
-        :param data: np.array of that which needs all forms of corruption
-        :param position: optional param which specifies the positions to corrupt
-        :return: np.array of (n, _) where n is num of corrupted things
-        """
-        position = self.position if position is None else position
-        write_index = 0
-
-        # Get a n_ent * len(position)-1 array
-        corrupted = np.zeros((len(position) * (self.n-1), len(data)))
-
-        # For each position in position
-        for _position in position:
-
-            # Get entities to exclude at this position
-            key = list(data).copy()
-            excluding = [key.pop(_position)]
-
-            if self.filtering:
-                excluding += self.hashes[_position][tuple(key)]
-
-            excluding = np.array(excluding)
-            excluding = np.sort(np.unique(np.concatenate((excluding, self.excluding))))
-            including = np.arange(self.n)
-            entities = np.delete(including, excluding)
-
-            # Inject in the zero arr
-            corrupted[write_index: write_index+entities.shape[0], :] = data
-            corrupted[write_index: write_index+entities.shape[0], _position] = entities
-            write_index += entities.shape[0]
-
-        # Take away orphaned rows from corrupted
-        corrupted = corrupted[:write_index]
-
-        return corrupted
-
     def _get_entities_(self, bs: Union[int, np.array], excluding: Union[int, np.array] = None,
                        keys: np.array = None, data_hash: dict = None) -> np.array:
         """
@@ -192,24 +153,26 @@ class Corruption:
 
         return entities
 
-    def corrupt_batch(self, data: np.array, position=None):
+    def corrupt_batch(self, data: np.array, position=None) -> np.array:
         """
             For each positions in data, make inflections. n_infl = len(data) // len(position)
-            Returns (pos, neg) pairs
+            NOTE: It computes a mask and does not inflect in positions not in the mask.
+
+            Returns corrupted arr
         """
 
         position = self.position if position is None else position
-
-        split_data = np.array_split(data, len(position))
         neg_data = np.copy(data)
 
-        write_index = 0
-        for i, _data in enumerate(split_data):
-            _position = position[i]
+        # Compute and trim mask
+        mask = compute_mask(data)
+        skip_positions = list(set(range(data.shape[1])).difference(set(position)))
+        mask[:, skip_positions] = 0
 
-            entities = self._get_entities_(_data.shape[0], excluding=_data[:, _position])
-            neg_data[write_index: write_index+_data.shape[0], _position] = entities
-            write_index += _data.shape[0]
+        noisy_entities = npr.randint(0, data.shape[0], (data.shape[0], ))
+        for row_index in range(data.shape[0]):
+            column_index = np.random.choice(np.argsort(-mask[row_index])[:np.sum(mask[row_index])])
+            neg_data[row_index, column_index] = noisy_entities[row_index]
 
         return neg_data
 

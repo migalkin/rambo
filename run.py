@@ -159,7 +159,7 @@ if __name__ == "__main__":
         "opt": optimizer,
         "train_fn": model,
         "neg_generator": Corruption(n=num_entities, excluding=ent_excluded_from_corr,
-                                    position=config.get('CORRUPTION_POSITIONS')),
+                                    position=list(range(0, config['MAX_QPAIRS'], 2))),
         "device": config['DEVICE'],
         "data_fn": partial(SimpleSampler, bs=config["BATCH_SIZE"]),
         "eval_fn_trn": evaluate_pointwise,
