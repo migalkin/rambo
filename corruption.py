@@ -165,7 +165,7 @@ class Corruption:
         neg_data = np.copy(data)
 
         # Compute and trim mask
-        mask = compute_mask(data)
+        mask = compute_mask(data).astype(np.int)
         skip_positions = list(set(range(data.shape[1])).difference(set(position)))
         mask[:, skip_positions] = 0
 
