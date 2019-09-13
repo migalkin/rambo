@@ -213,18 +213,18 @@ class EvaluationBenchArity(EvaluationBench):
                     else:
                         binary_metrics.append(np.mean(metric_across_positions, axis=0))
 
-                    # Spruce up the summary with more information
-                time_taken = timer.interval
-                metrics = self._summarize_metrics_(metrics)
-                binary_metrics = self._summarize_metrics_(binary_metrics)
-                nary_metrics = self._summarize_metrics_(nary_metrics)
-                summary = {'metrics': metrics, 'time_taken': time_taken, 'data_length': len(self.data_eval),
-                           'max_len_data': self.max_len_data, 'filtered': self.filtered,
-                           'binary_metrics': binary_metrics, 'nary_metrics': nary_metrics}
+        # Spruce up the summary with more information
+        time_taken = timer.interval
+        metrics = self._summarize_metrics_(metrics)
+        binary_metrics = self._summarize_metrics_(binary_metrics)
+        nary_metrics = self._summarize_metrics_(nary_metrics)
+        summary = {'metrics': metrics, 'time_taken': time_taken, 'data_length': len(self.data_eval),
+                   'max_len_data': self.max_len_data, 'filtered': self.filtered,
+                   'binary_metrics': binary_metrics, 'nary_metrics': nary_metrics}
 
-                self.summarize_run(summary)
+        self.summarize_run(summary)
 
-                return summary
+        return summary
 
 
 def acc(scores: torch.Tensor) -> np.float:
