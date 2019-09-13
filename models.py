@@ -113,8 +113,8 @@ class TransE(BaseModule):
         self._initialize()
 
         # Make pad index zero. # TODO: Should pad index be configurable? Probably not, right? Cool? Cool.
-        self.entity_embeddings.weight[0] = 0
-        self.relation_embeddings.weight[0] = 0
+        self.entity_embeddings.weight.data[0] = torch.zeros_like(self.entity_embeddings.weight[0], requires_grad=True)
+        self.relation_embeddings.weight.data[0] = torch.zeros_like(self.relation_embeddings.weight[0], requires_grad=True)
 
     def _initialize(self):
         embeddings_init_bound = 6 / np.sqrt(self.config['EMBEDDING_DIM'])
