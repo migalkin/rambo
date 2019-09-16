@@ -122,7 +122,7 @@ if __name__ == "__main__":
     optimizer = torch.optim.SGD(model.parameters(), lr=config['LEARNING_RATE'])
 
     if config['WANDB']:
-        wandb.init(project="wikidata-embeddings",
+        wandb.init(project="rembo",
                    notes=config.get('NOTES', ''))
         for k, v in config.items():
             wandb.config[k] = v
