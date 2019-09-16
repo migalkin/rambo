@@ -1,9 +1,44 @@
 """
     File which enables easily loading any dataset we need
 """
-import operator
-from utils import *
+import json
+from tqdm import tqdm
 from functools import partial
+
+from utils import *
+
+
+def _conv_to_our_format_(data):
+    conv_data = []
+    for datum in tqdm(data):
+        conv_datum = []
+
+        # Get head and tail rels
+        head, tail, rel_h, rel_t = None, None, None, None
+        for rel, val in datum.items():
+            if rel[-2:] == '_h' and type(val) is str:
+                head = val
+                rel_h = rel[:-2]
+            if rel[-2:] == '_t' and type(val) is str:
+                tail = val
+                rel_t = rel[:-2]
+
+        assert head and tail and rel_h and rel_t, f"Weird data point. Some essentials not found. Quitting\nD:{datum}"
+        assert rel_h == rel_t, f"Weird data point. Head and Tail rels are different. Quitting\nD: {datum}"
+
+        # Drop this bs
+        datum.pop(rel_h + '_h')
+        datum.pop(rel_t + '_t')
+        datum.pop('N')
+        conv_datum += [head, rel_h, tail]
+
+        # Get all qualifiers
+        for k, v in datum.items():
+            for _v in v:
+                conv_datum += [k, _v]
+
+        conv_data.append(tuple(conv_datum))
+    return conv_data
 
 
 def _get_uniques_(train_data: List[tuple], valid_data: List[tuple], test_data: List[tuple]) -> (list, list):
@@ -23,7 +58,8 @@ def _get_uniques_(train_data: List[tuple], valid_data: List[tuple], test_data: L
 
 def _pad_statements_(data: List[list], maxlen: int) -> List[list]:
     """ Padding index is always 0 as in the embedding layers of models. Cool? Cool. """
-    result = [statement + [0]*(maxlen - len(statement)) if len(statement) < maxlen else statement[:maxlen] for statement in data]
+    result = [statement + [0] * (maxlen - len(statement)) if len(statement) < maxlen else statement[:maxlen] for
+              statement in data]
     return result
 
 
@@ -162,7 +198,8 @@ def load_wd15k_statements(maxlen: int) -> Dict:
             id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
         test.append(id_st)
 
-    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid, maxlen), _pad_statements_(test ,maxlen)
+    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid, maxlen), _pad_statements_(test,
+                                                                                                            maxlen)
 
     return {"train": train, "valid": valid, "test": test, "num_entities": len(st_entities),
             "num_relations": len(st_predicates)}
@@ -205,7 +242,8 @@ def load_wd15k_qonly_statements(maxlen: int) -> Dict:
             id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
         test.append(id_st)
 
-    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid, maxlen), _pad_statements_(test, maxlen)
+    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid, maxlen), _pad_statements_(test,
+                                                                                                            maxlen)
 
     return {"train": train, "valid": valid, "test": test, "num_entities": len(st_entities),
             "num_relations": len(st_predicates)}
@@ -292,7 +330,6 @@ def load_wd15k_qonly_triples() -> Dict:
 
 
 def load_wikipeople_quints():
-
     # Load data from disk
     WP_DIR = PARSED_DATA_DIR / 'wikipeople'
 
@@ -345,7 +382,6 @@ def load_wikipeople_quints():
 
 
 def load_wikipeople_triples():
-
     # Load data from disk
     WP_DIR = PARSED_DATA_DIR / 'wikipeople'
 
@@ -377,11 +413,69 @@ def load_wikipeople_triples():
             "num_relations": len(triples_predicates)}
 
 
-def load_wikipeople_statements() -> Dict:
+def load_wikipeople_statements(maxlen=17) -> Dict:
     """
         :return: train/valid/test splits for the wikipeople dataset in its quints form
     """
-    ...
+    DIRNAME = Path('./data/raw_data/wikipeople')
+
+    # Load raw shit
+    with open(DIRNAME / 'n-ary_train.json', 'r') as f:
+        raw_trn = []
+        for line in f.readlines():
+            raw_trn.append(json.loads(line))
+
+    with open(DIRNAME / 'n-ary_test.json', 'r') as f:
+        raw_tst = []
+        for line in f.readlines():
+            raw_tst.append(json.loads(line))
+
+    with open(DIRNAME / 'n-ary_valid.json', 'r') as f:
+        raw_val = []
+        for line in f.readlines():
+            raw_val.append(json.loads(line))
+
+    # raw_trn[:-10], raw_tst[:10], raw_val[:10]
+    # Conv data to our format
+    conv_trn, conv_tst, conv_val = _conv_to_our_format_(raw_trn), \
+                                   _conv_to_our_format_(raw_tst), \
+                                   _conv_to_our_format_(raw_val)
+
+    # Get uniques
+    statement_entities, statement_predicates = _get_uniques_(train_data=conv_trn,
+                                                             test_data=conv_tst,
+                                                             valid_data=conv_val)
+
+
+
+    st_entities = ['__na__'] + statement_entities
+    st_predicates = ['__na__'] + statement_predicates
+
+    entoid = {pred: i for i, pred in enumerate(st_entities)}
+    prtoid = {pred: i for i, pred in enumerate(st_predicates)}
+
+    train, valid, test = [], [], []
+    for st in conv_trn:
+        id_st = []
+        for i, uri in enumerate(st):
+            id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
+        train.append(id_st)
+    for st in conv_val:
+        id_st = []
+        for i, uri in enumerate(st):
+            id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
+        valid.append(id_st)
+    for st in conv_tst:
+        id_st = []
+        for i, uri in enumerate(st):
+            id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
+        test.append(id_st)
+
+    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid, maxlen), _pad_statements_(test,
+                                                                                                            maxlen)
+
+    return {"train": train, "valid": valid, "test": test, "num_entities": len(st_entities),
+            "num_relations": len(st_predicates)}
 
 
 def load_fb15k237() -> Dict:
@@ -478,8 +572,11 @@ class DataManager(object):
         elif config['DATASET'] == 'wikipeople':
             if config['STATEMENT_LEN'] == 5:
                 return load_wikipeople_quints
-            else:
+            elif config['STATEMENT_LEN'] == 3:
                 return load_wikipeople_triples
+            else:
+                print("Here mf")
+                return partial(load_wikipeople_statements, maxlen=config['MAX_QPAIRS'])
         elif config['DATASET'] == 'wd15k_qonly':
             if config['STATEMENT_LEN'] == 5:
                 return load_wd15k_qonly_quints

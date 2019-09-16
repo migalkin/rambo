@@ -98,7 +98,7 @@ def training_loop(epochs: int,
                 -> same for the train set
             
         """
-        if e % eval_every == 0:
+        if e % eval_every == 0 and e >= 1:
             with torch.no_grad():
                 summary_val = val_testbench()
                 per_epoch_vl_acc = summary_val['metrics']['acc']
