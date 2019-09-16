@@ -68,7 +68,7 @@ class BaseModule(nn.Module):
         return loss
 
 
-def slice_triples(triples: torch.Tensor, slices=5) :
+def slice_triples(triples: torch.Tensor, slices: int) :
     """ Slice in 3 or 5 as needed """
     if slices == 5:
         return triples[:, 0], triples[:, 1], triples[:, 2], triples[:, 3], triples[:, 4]
@@ -191,14 +191,14 @@ class TransE(BaseModule):
             )
 
         elif self.statement_len == 3:
-            heads, relations, tails = slice_triples(triples, 3 )
+            heads, relations, tails = slice_triples(triples, 3)
             return (
                 self._get_entity_embeddings(heads),
                 self._get_relation_embeddings(relations),
                 self._get_entity_embeddings(tails)
             )
         else:
-            head, statement_entities, statement_relations = slice_triples(triples)
+            head, statement_entities, statement_relations = slice_triples(triples, -1)
             return (
                 self._get_entity_embeddings(head),
                 self.relation_embeddings(statement_relations),
