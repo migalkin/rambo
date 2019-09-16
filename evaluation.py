@@ -110,8 +110,9 @@ class EvaluationBench:
                             scores = self.model.predict(x)
 
                         else:
-                            scores = torch.tensor([], dtype=torch.float, device=self.model.config['DEVICE'])
 
+                            # scores = torch.tensor([], dtype=torch.float, device=self.model.config['DEVICE'])
+                            scores = []
                             for i in range(neg.shape[0])[::self.bs]:  # Break it down into batches and then do dis
                                 _neg = neg[i: i + self.bs]
                                 if i == 0:
@@ -120,8 +121,9 @@ class EvaluationBench:
                                 else:
                                     x = torch.tensor(_neg, dtype=torch.long, device=self.model.config['DEVICE'])
                                 _scores = self.model.predict(x)
+                                scores.append(_scores)
 
-                                scores = torch.cat((scores, _scores))
+                            scores = torch.cat(scores)
 
                         _metrics = self._compute_metric_(scores)
                         metric_across_positions.append(_metrics)

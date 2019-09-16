@@ -1,8 +1,4 @@
-git clone https://github.com/geraltofrivia/mytorch.git
-cd mytorch
-chmod +x setup.sh
-./setup.sh
-cd ..
+pip install -r requirements.txt
 
 mkdir data/parsed_data
 mkdir data/pre_training_data

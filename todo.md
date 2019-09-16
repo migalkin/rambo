@@ -23,6 +23,4 @@
 
 
 ## Monday - 16th
--> Fix loads of Wikipeople for nary models
--> Optimize eval time for n-ary things
 -> Run exp for nary over wd15k, wikipeople
