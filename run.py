@@ -1,6 +1,8 @@
 """
     The file which actually manages to run everything
 """
+import os
+os.environ['MKL_NUM_THREADS'] = '1'
 
 from functools import partial
 import random
@@ -150,7 +152,6 @@ if __name__ == "__main__":
                                        n_ents=num_entities,
                                        excluding_entities=ent_excluded_from_corr,
                                        positions=config.get('CORRUPTION_POSITIONS', None), trim=0.01)
-
 
 
     args = {

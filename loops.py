@@ -1,5 +1,5 @@
 import wandb
-from tqdm import tqdm
+from tqdm.autonotebook import tqdm
 from typing import Callable
 
 from mytorch import dataiters
