@@ -51,6 +51,7 @@ class BaseModule(nn.Module):
             self.embedding_dim,
             norm_type=self.entity_embedding_norm_type,
             max_norm=self.entity_embedding_max_norm,
+            padding_idx=0
         )
 
     def __init_subclass__(cls, **kwargs):  # noqa: D105
@@ -69,6 +70,7 @@ class BaseModule(nn.Module):
 
 
 def slice_triples(triples: torch.Tensor, slices: int) :
+
     """ Slice in 3 or 5 as needed """
     if slices == 5:
         return triples[:, 0], triples[:, 1], triples[:, 2], triples[:, 3], triples[:, 4]
@@ -106,15 +108,15 @@ class TransE(BaseModule):
         # Embeddings
         self.l_p_norm_entities = config['NORM_FOR_NORMALIZATION_OF_ENTITIES']
         self.scoring_fct_norm = config['SCORING_FUNCTION_NORM']
-        self.relation_embeddings = nn.Embedding(config['NUM_RELATIONS'], config['EMBEDDING_DIM'])
+        self.relation_embeddings = nn.Embedding(config['NUM_RELATIONS'], config['EMBEDDING_DIM'], padding_idx=0)
 
         self.config = config
 
         self._initialize()
 
         # Make pad index zero. # TODO: Should pad index be configurable? Probably not, right? Cool? Cool.
-        self.entity_embeddings.weight.data[0] = torch.zeros_like(self.entity_embeddings.weight[0], requires_grad=True)
-        self.relation_embeddings.weight.data[0] = torch.zeros_like(self.relation_embeddings.weight[0], requires_grad=True)
+        # self.entity_embeddings.weight.data[0] = torch.zeros_like(self.entity_embeddings.weight[0], requires_grad=True)
+        # self.relation_embeddings.weight.data[0] = torch.zeros_like(self.relation_embeddings.weight[0], requires_grad=True)
 
     def _initialize(self):
         embeddings_init_bound = 6 / np.sqrt(self.config['EMBEDDING_DIM'])
