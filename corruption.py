@@ -82,7 +82,7 @@ class Corruption:
         :param position: the position for which we need to make the corruption
         :return: numpy array of corrupted things
         """
-        assert position in self.position,  "Invalid corruption position provided"
+        assert position in self.position, "Invalid corruption position provided"
 
         # Get entities to exclude at this position
         key = list(data).copy()
@@ -93,7 +93,7 @@ class Corruption:
 
         excluding = np.array(excluding)
         excluding = np.sort(np.unique(np.concatenate((excluding, self.excluding))))
-        including = np.arange(self.n)
+        including = np.arange(self.n) 
         entities = np.delete(including, excluding)
 
         corrupted = np.zeros((entities.shape[0], len(data)))
@@ -169,7 +169,8 @@ class Corruption:
         skip_positions = list(set(range(data.shape[1])).difference(set(position)))
         mask[:, skip_positions] = 0
 
-        noisy_entities = npr.randint(0, data.shape[0], (data.shape[0], ))
+        # noisy_entities = npr.randint(0, data.shape[0], (data.shape[0],))
+        noisy_entities = self._get_entities_(data.shape[0])
         for row_index in range(data.shape[0]):
             column_index = np.random.choice(np.argsort(-mask[row_index])[:np.sum(mask[row_index])])
             neg_data[row_index, column_index] = noisy_entities[row_index]
@@ -178,12 +179,11 @@ class Corruption:
 
 
 if __name__ == "__main__":
-
     # Testing Corruption class
     true = np.random.randint(0, 20, (20000, 3))
     true[2] = true[1].copy()
     true[2][-1] = 99
-    n = np.array([0,1,2,3,4,7,8,9,10,11,12,15,18,19])
+    n = np.array([0, 1, 2, 3, 4, 7, 8, 9, 10, 11, 12, 15, 18, 19])
     corruption = Corruption(n, position=[0, 2])
     one_pos = true[10]
     # print(one_pos)
