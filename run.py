@@ -2,6 +2,7 @@
     The file which actually manages to run everything
 """
 import os
+
 os.environ['MKL_NUM_THREADS'] = '1'
 
 from functools import partial
@@ -16,7 +17,7 @@ from mytorch.utils.goodies import *
 from parse_wd15k import Quint
 from load import DataManager
 from utils import *
-from evaluation import EvaluationBench, acc, mrr, mr, hits_at, evaluate_pointwise
+from evaluation import EvaluationBench, EvaluationBenchArity, acc, mrr, mr, hits_at, evaluate_pointwise
 from models import TransE
 from corruption import Corruption
 from sampler import SimpleSampler
@@ -60,7 +61,8 @@ DEFAULT_CONFIG = {
     'DEVICE': 'cpu',
     'ENT_POS_FILTERED': True,
     'USE_TEST': False,
-    'MAX_QPAIRS': 43
+    'MAX_QPAIRS': 43,
+    'NARY_EVAL': False
 }
 
 if __name__ == "__main__":
@@ -86,10 +88,10 @@ if __name__ == "__main__":
     if DEFAULT_CONFIG['DATASET'] == 'wd15k':
         assert DEFAULT_CONFIG['STATEMENT_LEN'] is not None, \
             "You use WD15k dataset and don't specify whether to treat them as quints or not. Nicht cool'"
-    if max(DEFAULT_CONFIG['CORRUPTION_POSITIONS']) > 2:     # If we're corrupting something apart from S and O
+    if max(DEFAULT_CONFIG['CORRUPTION_POSITIONS']) > 2:  # If we're corrupting something apart from S and O
         assert DEFAULT_CONFIG['ENT_POS_FILTERED'] is False, \
             f"Since we're corrupting objects at pos. {DEFAULT_CONFIG['CORRUPTION_POSITIONS']}, " \
-            f"You must allow including entities which appear exclusively in qualifiers, too!"
+                f"You must allow including entities which appear exclusively in qualifiers, too!"
 
     """
         Load data based on the args/config
@@ -101,18 +103,18 @@ if __name__ == "__main__":
         raise ValueError(f"Honey I broke the loader for {DEFAULT_CONFIG['DATASET']}")
 
     if DEFAULT_CONFIG['ENT_POS_FILTERED']:
-        ent_excluded_from_corr = DataManager.gather_missing_entities(data=training_triples + valid_triples + test_triples,
-                                                                     positions=DEFAULT_CONFIG['CORRUPTION_POSITIONS'],
-                                                                     n_ents=num_entities)
+        ent_excluded_from_corr = DataManager.gather_missing_entities(
+            data=training_triples + valid_triples + test_triples,
+            positions=DEFAULT_CONFIG['CORRUPTION_POSITIONS'],
+            n_ents=num_entities)
         DEFAULT_CONFIG['NUM_ENTITIES_FILTERED'] = len(ent_excluded_from_corr)
     else:
         ent_excluded_from_corr = []
         DEFAULT_CONFIG['NUM_ENTITIES_FILTERED'] = len(ent_excluded_from_corr)
 
-    print(num_entities-DEFAULT_CONFIG['NUM_ENTITIES_FILTERED'])
+    print(num_entities - DEFAULT_CONFIG['NUM_ENTITIES_FILTERED'])
     DEFAULT_CONFIG['NUM_ENTITIES'] = num_entities
     DEFAULT_CONFIG['NUM_RELATIONS'] = num_relations
-
 
     """
         Make ze model
@@ -124,8 +126,7 @@ if __name__ == "__main__":
     optimizer = torch.optim.SGD(model.parameters(), lr=config['LEARNING_RATE'])
 
     if config['WANDB']:
-        wandb.init(project="rembo",
-                   notes=config.get('NOTES', ''))
+        wandb.init(project="wikidata-emebeddings")
         for k, v in config.items():
             wandb.config[k] = v
 
@@ -142,17 +143,27 @@ if __name__ == "__main__":
         tr_data = {'train': np.array(training_triples), 'valid': data['eval']}
 
     eval_metrics = [acc, mrr, mr, partial(hits_at, k=3), partial(hits_at, k=5), partial(hits_at, k=10)]
-    evaluation_valid = EvaluationBench(data, model, bs=8000,
-                                       metrics=eval_metrics, filtered=True,
-                                       n_ents=num_entities,
-                                       excluding_entities=ent_excluded_from_corr,
-                                       positions=config.get('CORRUPTION_POSITIONS', None))
-    evaluation_train = EvaluationBench(_data, model, bs=8000,
-                                       metrics=eval_metrics, filtered=True,
-                                       n_ents=num_entities,
-                                       excluding_entities=ent_excluded_from_corr,
-                                       positions=config.get('CORRUPTION_POSITIONS', None), trim=0.01)
 
+    if not config['NARY_EVAL']:
+        evaluation_valid = EvaluationBench(data, model, bs=8000,
+                                           metrics=eval_metrics, filtered=True,
+                                           n_ents=num_entities,
+                                           excluding_entities=ent_excluded_from_corr,
+                                           positions=config.get('CORRUPTION_POSITIONS', None))
+        evaluation_train = EvaluationBench(_data, model, bs=8000,
+                                           metrics=eval_metrics, filtered=True,
+                                           n_ents=num_entities,
+                                           excluding_entities=ent_excluded_from_corr,
+                                           positions=config.get('CORRUPTION_POSITIONS', None), trim=0.01)
+    else:
+        evaluation_valid = EvaluationBenchArity(data, model, bs=8000,
+                                                metrics=eval_metrics, filtered=True,
+                                                n_ents=num_entities,
+                                                excluding_entities=ent_excluded_from_corr)
+        evaluation_train = EvaluationBenchArity(_data, model, bs=8000,
+                                                metrics=eval_metrics, filtered=True,
+                                                n_ents=num_entities,
+                                                excluding_entities=ent_excluded_from_corr, trim=0.01)
 
     args = {
         "epochs": config['EPOCHS'],
