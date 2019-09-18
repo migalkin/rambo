@@ -46,14 +46,14 @@ DEFAULT_CONFIG = {
     'NORM_FOR_NORMALIZATION_OF_ENTITIES': 2,
     'NORM_FOR_NORMALIZATION_OF_RELATIONS': 2,
     'SCORING_FUNCTION_NORM': 1,
-    'MARGIN_LOSS': 1,
+    'MARGIN_LOSS': 5,
     'LEARNING_RATE': 0.001,
     'NEGATIVE_SAMPLING_PROBS': [0.3, 0.0, 0.2, 0.5],
     'NEGATIVE_SAMPLING_TIMES': 10,
-    'BATCH_SIZE': 64,
+    'BATCH_SIZE': 512,
     'EPOCHS': 1000,
     'STATEMENT_LEN': -1,
-    'EVAL_EVERY': 10,
+    'EVAL_EVERY': 20,
     'WANDB': False,
     'RUN_TESTBENCH_ON_TRAIN': True,
     'DATASET': 'wd15k',
@@ -62,7 +62,8 @@ DEFAULT_CONFIG = {
     'ENT_POS_FILTERED': True,
     'USE_TEST': False,
     'MAX_QPAIRS': 43,
-    'NARY_EVAL': False
+    'NARY_EVAL': False,
+    'SELF_ATTENTION': False
 }
 
 if __name__ == "__main__":
@@ -170,7 +171,7 @@ if __name__ == "__main__":
         "data": tr_data,
         "opt": optimizer,
         "train_fn": model,
-        "neg_generator": Corruption(n=num_entities, excluding=ent_excluded_from_corr,
+        "neg_generator": Corruption(n=num_entities, excluding=[0],
                                     position=list(range(0, config['MAX_QPAIRS'], 2))),
         "device": config['DEVICE'],
         "data_fn": partial(SimpleSampler, bs=config["BATCH_SIZE"]),
