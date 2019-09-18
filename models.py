@@ -137,6 +137,9 @@ class TransE(BaseModule):
         self.relation_embeddings.weight.data = self.relation_embeddings.weight.data.div(
             norms.view(self.num_relations, 1).expand_as(self.relation_embeddings.weight))
 
+        self.relation_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)
+        self.entity_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)  # zeroing the padding index
+
     def predict(self, triples):
         scores = self._score_triples(triples)
         return scores
@@ -148,6 +151,7 @@ class TransE(BaseModule):
         norms = torch.norm(self.entity_embeddings.weight, p=self.l_p_norm_entities, dim=1).data
         self.entity_embeddings.weight.data = self.entity_embeddings.weight.data.div(
             norms.view(self.num_entities, 1).expand_as(self.entity_embeddings.weight))
+        self.entity_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)  # zeroing the padding index
 
         positive_scores = self._score_triples(batch_positives)
         negative_scores = self._score_triples(batch_negatives)
