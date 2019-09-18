@@ -62,7 +62,8 @@ DEFAULT_CONFIG = {
     'ENT_POS_FILTERED': True,
     'USE_TEST': False,
     'MAX_QPAIRS': 43,
-    'NARY_EVAL': False
+    'NARY_EVAL': False,
+    'SELF_ATTENTION': False
 }
 
 if __name__ == "__main__":
