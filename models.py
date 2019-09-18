@@ -7,6 +7,7 @@
 import torch
 from torch import nn
 import torch.autograd
+import torch.nn.functional as F
 
 import numpy as np
 from typing import List, Optional, Dict, Tuple
@@ -158,6 +159,18 @@ class TransE(BaseModule):
         scores = self._compute_scores(*self._get_triple_embeddings(triples))
         return scores
 
+    def _self_attention(self, head_embeddings, relation_embeddings, tail_embeddings, scale=False):
+        """ Simple self attention """
+        # @TODO: Add scaling factor
+        # @TODO: Add masking.
+
+        triple_vector = head_embeddings + relation_embeddings[:, 0, :] - tail_embeddings[:, 0, :]
+        quint = relation_embeddings[:, 1:, :] - tail_embeddings[:, 1:, :]
+        ct = torch.cat((triple_vector.unsqueeze(1), quint), dim=1)
+        score = torch.bmm(ct, ct.transpose(1, 2))
+        score = F.softmax(score, dim=2)
+        return torch.sum(torch.bmm(score, ct), dim=1)
+
     def _compute_scores(self, head_embeddings, relation_embeddings, tail_embeddings,
                         qual_relation_embeddings=None, qual_entity_embeddings=None):
         """
@@ -177,7 +190,10 @@ class TransE(BaseModule):
             # Add the vector element wise
         else:
             # use formula head + sum(relations - tails)
-            sum_res = head_embeddings + torch.sum(relation_embeddings-tail_embeddings, dim=1)
+            if self.config['SELF_ATTENTION']:
+                sum_res = self._self_attention(head_embeddings, relation_embeddings, tail_embeddings)
+            else:
+                sum_res = head_embeddings + torch.sum(relation_embeddings-tail_embeddings, dim=1)
         distances = torch.norm(sum_res, dim=1, p=self.scoring_fct_norm).view(size=(-1,))
         return distances
 
