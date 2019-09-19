@@ -115,10 +115,11 @@ if __name__ == "__main__":
             n_ents=num_entities)
         DEFAULT_CONFIG['NUM_ENTITIES_FILTERED'] = len(ent_excluded_from_corr)
     else:
-        ent_excluded_from_corr = []
+        ent_excluded_from_corr = [0]
         DEFAULT_CONFIG['NUM_ENTITIES_FILTERED'] = len(ent_excluded_from_corr)
 
-    print(num_entities - DEFAULT_CONFIG['NUM_ENTITIES_FILTERED'])
+    print(f"Training on {num_entities} entities")
+    print(f"Evaluating on {num_entities - DEFAULT_CONFIG['NUM_ENTITIES_FILTERED']} entities")
     DEFAULT_CONFIG['NUM_ENTITIES'] = num_entities
     DEFAULT_CONFIG['NUM_RELATIONS'] = num_relations
 
