@@ -172,7 +172,8 @@ class TransE(BaseModule):
         quint = relation_embeddings[:, 1:, :] - tail_embeddings[:, 1:, :]
         ct = torch.cat((triple_vector.unsqueeze(1), quint), dim=1)
         score = torch.bmm(ct, ct.transpose(1, 2))
-        score = F.softmax(score, dim=2)
+        mask = compute_mask(score, padding_idx=0)
+        score = masked_softmax(score, mask)
         return torch.sum(torch.bmm(score, ct), dim=1)
 
     def _compute_scores(self, head_embeddings, relation_embeddings, tail_embeddings,
