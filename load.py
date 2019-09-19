@@ -41,6 +41,43 @@ def _conv_to_our_format_(data):
     return conv_data
 
 
+def _conv_to_our_quint_format_(data):
+    conv_data = []
+    for datum in tqdm(data):
+        conv_datum = []
+
+        # Get head and tail rels
+        head, tail, rel_h, rel_t = None, None, None, None
+        for rel, val in datum.items():
+            if rel[-2:] == '_h' and type(val) is str:
+                head = val
+                rel_h = rel[:-2]
+            if rel[-2:] == '_t' and type(val) is str:
+                tail = val
+                rel_t = rel[:-2]
+
+        assert head and tail and rel_h and rel_t, f"Weird data point. Some essentials not found. Quitting\nD:{datum}"
+        assert rel_h == rel_t, f"Weird data point. Head and Tail rels are different. Quitting\nD: {datum}"
+
+        # Drop this bs
+        datum.pop(rel_h + '_h')
+        datum.pop(rel_t + '_t')
+        datum.pop('N')
+        conv_datum += [head, rel_h, tail, None, None]
+
+        if len(datum.items()) == 0:
+            conv_data.append(tuple(conv_datum))
+        else:
+            # Get all qualifiers
+            for k, v in datum.items():
+                conv_datum[3] = k
+                for _v in v:
+                    conv_datum[4] = _v
+                    conv_data.append(tuple(conv_datum))
+
+    return conv_data
+
+
 def _get_uniques_(train_data: List[tuple], valid_data: List[tuple], test_data: List[tuple]) -> (list, list):
     """ Throw in parsed_data/wd15k/ files and we'll count the entities and predicates"""
 
@@ -331,18 +368,40 @@ def load_wd15k_qonly_triples() -> Dict:
 
 def load_wikipeople_quints():
     # Load data from disk
-    WP_DIR = PARSED_DATA_DIR / 'wikipeople'
+    DIRNAME = Path('./data/raw_data/wikipeople')
 
-    with open(WP_DIR / 'train_quints.pkl', 'rb') as f:
-        train_quints = pickle.load(f)
-    with open(WP_DIR / 'valid_quints.pkl', 'rb') as f:
-        valid_quints = pickle.load(f)
-    with open(WP_DIR / 'test_quints.pkl', 'rb') as f:
-        test_quints = pickle.load(f)
+    # Load raw shit
+    with open(DIRNAME / 'n-ary_train.json', 'r') as f:
+        raw_trn = []
+        for line in f.readlines():
+            raw_trn.append(json.loads(line))
 
+    with open(DIRNAME / 'n-ary_test.json', 'r') as f:
+        raw_tst = []
+        for line in f.readlines():
+            raw_tst.append(json.loads(line))
+
+    with open(DIRNAME / 'n-ary_valid.json', 'r') as f:
+        raw_val = []
+        for line in f.readlines():
+            raw_val.append(json.loads(line))
+
+    # raw_trn[:-10], raw_tst[:10], raw_val[:10]
+    # Conv data to our format
+    conv_trn, conv_tst, conv_val = _conv_to_our_quint_format_(raw_trn), \
+                                   _conv_to_our_quint_format_(raw_tst), \
+                                   _conv_to_our_quint_format_(raw_val)
+
+    # quints_entities, quints_predicates = _get_uniques_(train_data=conv_trn,
+    #                                                          test_data=conv_tst,
+    #                                                          valid_data=conv_val)
+
+    # st_entities = ['__na__'] + quints_entities
+    # st_predicates = ['__na__'] + quints_predicates
+    # quints_entities = ['__na__'] + sorted(list(set(quints_entities)))
+    # quints_predicates = ['__na__'] + sorted(list(set(quints_predicates)))
     quints_entities, quints_predicates = [], []
-
-    for quint in train_quints + valid_quints + test_quints:
+    for quint in conv_trn + conv_val + conv_tst:
         quints_entities += [quint[0], quint[2]]
         if quint[4]:
             quints_entities.append(quint[4])
@@ -351,8 +410,8 @@ def load_wikipeople_quints():
         if quint[3]:
             quints_predicates.append(quint[3])
 
-    quints_entities = ['__na__'] + sorted(list(set(quints_entities)))
-    quints_predicates = ['__na__'] + sorted(list(set(quints_predicates)))
+    quints_entities = sorted(list(set(quints_entities)))
+    quints_predicates = sorted(list(set(quints_predicates)))
 
     q_entities = ['__na__'] + quints_entities
     q_predicates = ['__na__'] + quints_predicates
@@ -365,17 +424,17 @@ def load_wikipeople_quints():
               prtoid[q[1]],
               entoid[q[2]],
               prtoid[q[3]] if q[3] is not None else prtoid['__na__'],
-              entoid[q[4]] if q[4] is not None else entoid['__na__']] for q in train_quints]
+              entoid[q[4]] if q[4] is not None else entoid['__na__']] for q in conv_trn]
     valid = [[entoid[q[0]],
               prtoid[q[1]],
               entoid[q[2]],
               prtoid[q[3]] if q[3] is not None else prtoid['__na__'],
-              entoid[q[4]] if q[4] is not None else entoid['__na__']] for q in valid_quints]
+              entoid[q[4]] if q[4] is not None else entoid['__na__']] for q in conv_val]
     test = [[entoid[q[0]],
              prtoid[q[1]],
              entoid[q[2]],
              prtoid[q[3]] if q[3] is not None else prtoid['__na__'],
-             entoid[q[4]] if q[4] is not None else entoid['__na__']] for q in test_quints]
+             entoid[q[4]] if q[4] is not None else entoid['__na__']] for q in conv_tst]
 
     return {"train": train, "valid": valid, "test": test, "num_entities": len(q_entities),
             "num_relations": len(q_predicates)}
@@ -552,6 +611,17 @@ def load_fb15k() -> Dict:
             "num_relations": num_relations}
 
 
+def load_dummy_dataset():
+    """
+
+    :return: a dummy dataset for a model to overfit
+    """
+    num_rows = 1000
+    num_entities = 200
+    num_relations = 20
+    ds = [[]]
+
+
 class DataManager(object):
     """ Give me your args I'll give you a path to load the dataset with my superawesome AI """
 
@@ -618,11 +688,10 @@ if __name__ == "__main__":
     # ds4 = load_wd15k_qonly_triples()
     # print(len(ds4))
 
-    ds = load_wd15k_statements(maxlen=43)
+    ds = load_wikipeople_quints()
     tr = ds['train']
     vl = ds['valid']
     ts = ds['test']
     ne = ds['num_entities']
     nr = ds['num_relations']
-    ds5 = load_wd15k_qonly_statements(maxlen=43)
     print("Magic Mike!")
