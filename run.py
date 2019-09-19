@@ -40,6 +40,11 @@ random.seed(42)
 
         *POSITIONS*
             the positions on which we should inflect the negatives.
+        
+        *SELF_ATTENTION*: int
+            If 1 -> 1D self attention is used
+            If 2 -> 2D self attention is used
+            Anything else, no self attention is used.
 """
 DEFAULT_CONFIG = {
     'EMBEDDING_DIM': 50,
@@ -63,7 +68,7 @@ DEFAULT_CONFIG = {
     'USE_TEST': False,
     'MAX_QPAIRS': 43,
     'NARY_EVAL': False,
-    'SELF_ATTENTION': False
+    'SELF_ATTENTION': 0
 }
 
 if __name__ == "__main__":

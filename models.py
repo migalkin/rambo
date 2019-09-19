@@ -26,8 +26,8 @@ class BaseModule(nn.Module):
         self.entity_embedding_max_norm: Optional[int] = None
         self.entity_embedding_norm_type: int = 2
         self.hyper_params = [config['EMBEDDING_DIM'],
-                        config['MARGIN_LOSS'],
-                        config['LEARNING_RATE']]
+                             config['MARGIN_LOSS'],
+                             config['LEARNING_RATE']]
 
         # Device selection
         self.device: torch.device = config['DEVICE']
@@ -70,15 +70,14 @@ class BaseModule(nn.Module):
         return loss
 
 
-def slice_triples(triples: torch.Tensor, slices: int) :
-
+def slice_triples(triples: torch.Tensor, slices: int):
     """ Slice in 3 or 5 as needed """
     if slices == 5:
         return triples[:, 0], triples[:, 1], triples[:, 2], triples[:, 3], triples[:, 4]
     elif slices == 3:
         return triples[:, 0], triples[:, 1], triples[:, 2]
     else:
-        return triples[:, 0], triples[:, 2::2], triples[:, 1::2] # subject, all other entities, all relations
+        return triples[:, 0], triples[:, 2::2], triples[:, 1::2]  # subject, all other entities, all relations
 
 
 class TransE(BaseModule):
@@ -96,7 +95,7 @@ class TransE(BaseModule):
     """
 
     model_name = 'TransE MM'
-    
+
     def __init__(self, config) -> None:
 
         self.margin_ranking_loss_size_average: bool = True
@@ -163,18 +162,34 @@ class TransE(BaseModule):
         scores = self._compute_scores(*self._get_triple_embeddings(triples))
         return scores
 
-    def _self_attention(self, head_embeddings, relation_embeddings, tail_embeddings, scale=False):
+    def _self_attention_2d(self, head_embeddings, relation_embeddings, tail_embeddings, scale=False):
         """ Simple self attention """
         # @TODO: Add scaling factor
         # @TODO: Add masking.
 
         triple_vector = head_embeddings + relation_embeddings[:, 0, :] - tail_embeddings[:, 0, :]
-        quint = relation_embeddings[:, 1:, :] - tail_embeddings[:, 1:, :]
-        ct = torch.cat((triple_vector.unsqueeze(1), quint), dim=1)
+        qualifier_vectors = relation_embeddings[:, 1:, :] - tail_embeddings[:, 1:, :]
+        ct = torch.cat((triple_vector.unsqueeze(1), qualifier_vectors), dim=1)
         score = torch.bmm(ct, ct.transpose(1, 2))
         mask = compute_mask(score, padding_idx=0)
         score = masked_softmax(score, mask)
         return torch.sum(torch.bmm(score, ct), dim=1)
+
+    def _self_attention_1d(self, head_embedding, relation_embedding, tail_embedding, scale=False):
+        """
+            Self attention but 1D instead of n x n .
+            So, weighing all qualifiers wrt the triple scores
+        """
+
+        triple_vector = head_embedding + relation_embedding[:, 0, :] - tail_embedding[:, 0, :]
+        qualifier_vectors = relation_embedding[:, 1:, :] - tail_embedding[:, 1:, :]
+        # ct = torch.cat((triple_vector.unsqueeze(1), qualifier_vectors), dim=1)
+        score = torch.bmm(triple_vector.unsqueeze(1), qualifier_vectors.transpose(1, 2)).squeeze(1)
+        mask = compute_mask(score, padding_idx=0)
+        score = masked_softmax(score, mask)
+        weighted_qualifier_vectors = score.unsqueeze(-1) * qualifier_vectors
+
+        return torch.sum(torch.cat((triple_vector.unsqueeze(1), weighted_qualifier_vectors),  dim=1), dim=1)
 
     def _compute_scores(self, head_embeddings, relation_embeddings, tail_embeddings,
                         qual_relation_embeddings=None, qual_entity_embeddings=None):
@@ -182,7 +197,7 @@ class TransE(BaseModule):
             Compute the scores based on the head, relation, and tail embeddings.
 
         :param head_embeddings: embeddings of head entities of dimension batchsize x embedding_dim
-        :param relation_embeddings: emebddings of relation embeddings of dimension batchsize x embedding_dim
+        :param relation_embeddings: embeddings of relation embeddings of dimension batchsize x embedding_dim
         :param tail_embeddings: embeddings of tail entities of dimension batchsize x embedding_dim
         :param qual_entity_embeddings: embeddings of qualifier relations of dimensinos batchsize x embeddig_dim
         :param qual_relation_embeddings: embeddings of qualifier entities of dimension batchsize x embedding_dim
@@ -195,10 +210,14 @@ class TransE(BaseModule):
             # Add the vector element wise
         else:
             # use formula head + sum(relations - tails)
-            if self.config['SELF_ATTENTION']:
-                sum_res = self._self_attention(head_embeddings, relation_embeddings, tail_embeddings)
+            # r[:,1:,:] , t[:,1:,:]
+
+            if self.config['SELF_ATTENTION']==1:
+                sum_res = self._self_attention_1d(head_embeddings, relation_embeddings, tail_embeddings)
+            elif self.config['SELF_ATTENTION']==2:
+                sum_res = self._self_attention_2d(head_embeddings, relation_embeddings, tail_embeddings)
             else:
-                sum_res = head_embeddings + torch.sum(relation_embeddings-tail_embeddings, dim=1)
+                sum_res = head_embeddings + torch.sum(relation_embeddings - tail_embeddings, dim=1)
         distances = torch.norm(sum_res, dim=1, p=self.scoring_fct_norm).view(size=(-1,))
         return distances
 
