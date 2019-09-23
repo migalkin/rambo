@@ -109,10 +109,11 @@ class TransE(BaseModule):
         self.l_p_norm_entities = config['NORM_FOR_NORMALIZATION_OF_ENTITIES']
         self.scoring_fct_norm = config['SCORING_FUNCTION_NORM']
         self.relation_embeddings = nn.Embedding(config['NUM_RELATIONS'], config['EMBEDDING_DIM'], padding_idx=0)
-        if self.config['PROJECT_QUALIFIERS']:
-            self.proj_mat = nn.Linear(self.embedding_dim, self.embedding_dim, bias=False)
 
         self.config = config
+
+        if self.config['PROJECT_QUALIFIERS']:
+            self.proj_mat = nn.Linear(self.embedding_dim, self.embedding_dim, bias=False)
 
         self._initialize()
 
