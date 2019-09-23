@@ -22,5 +22,5 @@
 
 
 
-## Monday - 16th
--> Run exp for nary over wd15k, wikipeople
+## Friday - 20th Sept
+Re-wire TransE forward to be more receptive to quints and triples than right now.

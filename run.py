@@ -68,7 +68,8 @@ DEFAULT_CONFIG = {
     'USE_TEST': False,
     'MAX_QPAIRS': 43,
     'NARY_EVAL': False,
-    'SELF_ATTENTION': 0
+    'SELF_ATTENTION': 0,
+    'PROJECT_QUALIFIERS': False
 }
 
 if __name__ == "__main__":

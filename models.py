@@ -109,6 +109,8 @@ class TransE(BaseModule):
         self.l_p_norm_entities = config['NORM_FOR_NORMALIZATION_OF_ENTITIES']
         self.scoring_fct_norm = config['SCORING_FUNCTION_NORM']
         self.relation_embeddings = nn.Embedding(config['NUM_RELATIONS'], config['EMBEDDING_DIM'], padding_idx=0)
+        if self.config['PROJECT_QUALIFIERS']:
+            self.proj_mat = nn.Linear(self.embedding_dim, self.embedding_dim, bias=False)
 
         self.config = config
 
@@ -210,7 +212,11 @@ class TransE(BaseModule):
             # Add the vector element wise
         else:
             # use formula head + sum(relations - tails)
-            # r[:,1:,:] , t[:,1:,:]
+
+            # Project or not
+            if self.config['PROJECT_QUALIFIERS']:
+                relation_embeddings[:,1:,:] = self.proj_mat(relation_embeddings[:,1:,:])
+                tail_embeddings[:,1:,:] = self.proj_mat(tail_embeddings[:,1:,:])
 
             if self.config['SELF_ATTENTION']==1:
                 sum_res = self._self_attention_1d(head_embeddings, relation_embeddings, tail_embeddings)
