@@ -18,7 +18,7 @@ from parse_wd15k import Quint
 from load import DataManager
 from utils import *
 from evaluation import EvaluationBench, EvaluationBenchArity, acc, mrr, mr, hits_at, evaluate_pointwise
-from models import TransE
+from models import TransE, ConvKB
 from corruption import Corruption
 from sampler import SimpleSampler
 from loops import training_loop
@@ -69,7 +69,9 @@ DEFAULT_CONFIG = {
     'MAX_QPAIRS': 43,
     'NARY_EVAL': False,
     'SELF_ATTENTION': 0,
-    'PROJECT_QUALIFIERS': False
+    'PROJECT_QUALIFIERS': False,
+    'NUM_FILTER': 5,
+    'MODEL_NAME': 'ConvKB'
 }
 
 if __name__ == "__main__":
@@ -129,7 +131,13 @@ if __name__ == "__main__":
     """
     config = DEFAULT_CONFIG.copy()
     config['DEVICE'] = torch.device(config['DEVICE'])
-    model = TransE(config)
+    
+    if config['MODEL_NAME'].lower() == 'transe':
+        model = TransE(config)
+    elif config['MODEL_NAME'].lower() == 'convkb':
+        model = ConvKB(config)
+    else:
+        raise Assertion('Unknown Model Name')
     model.to(config['DEVICE'])
     optimizer = torch.optim.SGD(model.parameters(), lr=config['LEARNING_RATE'])
 

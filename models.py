@@ -260,3 +260,136 @@ class TransE(BaseModule):
 
     def _get_relation_embeddings(self, relations):
         return self.relation_embeddings(relations).view(-1, self.embedding_dim)
+
+    
+class ConvKB(BaseModule):
+    """
+    An implementation of ConvKB.
+    
+    A Novel Embedding Model for Knowledge Base CompletionBased on Convolutional Neural Network. 
+    """
+
+    model_name = 'ConvKB'
+
+    def __init__(self, config) -> None:
+
+        self.margin_ranking_loss_size_average: bool = True
+        self.entity_embedding_max_norm: Optional[int] = None
+        self.entity_embedding_norm_type: int = 2
+        self.model_name = 'ConvKB'
+        super().__init__(config)
+        self.statement_len = config['STATEMENT_LEN']
+
+        # Embeddings
+        self.l_p_norm_entities = config['NORM_FOR_NORMALIZATION_OF_ENTITIES']
+        self.scoring_fct_norm = config['SCORING_FUNCTION_NORM']
+        self.relation_embeddings = nn.Embedding(config['NUM_RELATIONS'], config['EMBEDDING_DIM'], padding_idx=0)
+
+        self.config = config
+
+        
+        
+        self.conv = nn.Conv2d(in_channels=1, 
+                              out_channels=config['NUM_FILTER'], kernel_size= (config['MAX_QPAIRS'],1), 
+                             bias=True)
+        
+        self.fc = nn.Linear(config['NUM_FILTER']*self.embedding_dim,1, bias=False)
+        
+        self._initialize()
+
+        # Make pad index zero. # TODO: Should pad index be configurable? Probably not, right? Cool? Cool.
+        # self.entity_embeddings.weight.data[0] = torch.zeros_like(self.entity_embeddings.weight[0], requires_grad=True)
+        # self.relation_embeddings.weight.data[0] = torch.zeros_like(self.relation_embeddings.weight[0], requires_grad=True)
+
+    def _initialize(self):
+        embeddings_init_bound = 6 / np.sqrt(self.config['EMBEDDING_DIM'])
+        nn.init.uniform_(
+            self.entity_embeddings.weight.data,
+            a=-embeddings_init_bound,
+            b=+embeddings_init_bound,
+        )
+        nn.init.uniform_(
+            self.relation_embeddings.weight.data,
+            a=-embeddings_init_bound,
+            b=+embeddings_init_bound,
+        )
+
+        norms = torch.norm(self.relation_embeddings.weight,
+                           p=self.config['NORM_FOR_NORMALIZATION_OF_RELATIONS'], dim=1).data
+        self.relation_embeddings.weight.data = self.relation_embeddings.weight.data.div(
+            norms.view(self.num_relations, 1).expand_as(self.relation_embeddings.weight))
+
+        self.relation_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)
+        self.entity_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)  # zeroing the padding index
+        
+        
+
+    def predict(self, triples):
+        scores = self._score_triples(triples)
+        return scores
+
+    def forward(self, batch_positives, batch_negatives) \
+            -> Tuple[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
+
+        # Normalize embeddings of entities
+        norms = torch.norm(self.entity_embeddings.weight, p=self.l_p_norm_entities, dim=1).data
+        
+        self.entity_embeddings.weight.data = self.entity_embeddings.weight.data.div(
+            norms.view(self.num_entities, 1).expand_as(self.entity_embeddings.weight))
+        
+        self.entity_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)  # zeroing the padding index
+
+        positive_scores = self._score_triples(batch_positives)
+        negative_scores = self._score_triples(batch_negatives)
+        loss = self._compute_loss(positive_scores=positive_scores, negative_scores=negative_scores)
+        return (positive_scores, negative_scores), loss
+
+    def _score_triples(self, triples) -> torch.Tensor:
+        """ Get triple/quint embeddings, and compute scores """
+        scores = self._compute_scores(*self._get_triple_embeddings(triples))
+        return scores
+
+
+    def _compute_scores(self, head_embeddings, relation_embeddings, tail_embeddings,
+                        qual_relation_embeddings=None, qual_entity_embeddings=None):
+        """
+            Compute the scores based on the head, relation, and tail embeddings.
+
+        :param head_embeddings: embeddings of head entities of dimension batchsize x embedding_dim
+        :param relation_embeddings: embeddings of relation embeddings of dimension batchsize x embedding_dim
+        :param tail_embeddings: embeddings of tail entities of dimension batchsize x embedding_dim
+        :param qual_entity_embeddings: embeddings of qualifier relations of dimensinos batchsize x embeddig_dim
+        :param qual_relation_embeddings: embeddings of qualifier entities of dimension batchsize x embedding_dim
+        :return: Tensor of dimension batch_size containing the scores for each batch element
+        """
+        
+        statement_emb = torch.zeros(head_embeddings.shape[0],
+                                    relation_embeddings.shape[1]*2+1,
+                                     head_embeddings.shape[1], 
+                                 device=self.config['DEVICE'],
+                                   dtype=head_embeddings.dtype) # 1 for head embedding
+        
+        # Assignment
+        statement_emb[:,0] = head_embeddings
+        statement_emb[:,1::2] = relation_embeddings
+        statement_emb[:,2::2] = tail_embeddings
+        
+        
+        # Convolutional operation
+        statement_emb = F.relu(self.conv(statement_emb.unsqueeze(1))).squeeze(-1) # bs*number_of_filter*emb_dim            
+        statement_emb = statement_emb.view(statement_emb.shape[0], -1)
+        score = self.fc(statement_emb)
+        
+        return score
+
+    def _get_triple_embeddings(self, triples):
+        
+        head, statement_entities, statement_relations = slice_triples(triples, -1)
+        return (
+            self._get_entity_embeddings(head),
+            self.relation_embeddings(statement_relations),
+            self.entity_embeddings(statement_entities)
+        )
+
+    def _get_relation_embeddings(self, relations):
+        return self.relation_embeddings(relations).view(-1, self.embedding_dim)
