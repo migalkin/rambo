@@ -113,7 +113,7 @@ class TransE(BaseModule):
         self.config = config
 
         if self.config['PROJECT_QUALIFIERS']:
-            self.proj_mat = nn.Linear(self.embedding_dim, self.embedding_dim, bias=False)
+            self.proj_mat = nn.Linear(2*self.embedding_dim, self.embedding_dim, bias=False)
 
         self._initialize()
 
@@ -216,10 +216,14 @@ class TransE(BaseModule):
 
             # Project or not
             if self.config['PROJECT_QUALIFIERS']:
-                relation_embeddings[:,1:,:] = self.proj_mat(relation_embeddings[:,1:,:])
-                tail_embeddings[:,1:,:] = self.proj_mat(tail_embeddings[:,1:,:])
+                #relation_embeddings[:,1:,:] = self.proj_mat(relation_embeddings[:,1:,:])
+                #tail_embeddings[:,1:,:] = self.proj_mat(tail_embeddings[:,1:,:])
 
-            if self.config['SELF_ATTENTION']==1:
+                quals = torch.sum(relation_embeddings[:, 1:, :] - tail_embeddings[:, 1:, :], dim=1)
+                new_rel = torch.cat((relation_embeddings[:, 0, :], quals), dim=1)
+                p_proj = self.proj_mat(new_rel)
+                sum_res = head_embeddings + p_proj - tail_embeddings[:, 0, :]
+            elif self.config['SELF_ATTENTION']==1:
                 sum_res = self._self_attention_1d(head_embeddings, relation_embeddings, tail_embeddings)
             elif self.config['SELF_ATTENTION']==2:
                 sum_res = self._self_attention_2d(head_embeddings, relation_embeddings, tail_embeddings)
