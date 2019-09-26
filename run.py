@@ -71,7 +71,8 @@ DEFAULT_CONFIG = {
     'SELF_ATTENTION': 0,
     'PROJECT_QUALIFIERS': False,
     'NUM_FILTER': 5,
-    'MODEL_NAME': 'ConvKB'
+    'MODEL_NAME': 'ConvKB',
+    'SAVE': False
 }
 
 if __name__ == "__main__":
@@ -137,7 +138,8 @@ if __name__ == "__main__":
     elif config['MODEL_NAME'].lower() == 'convkb':
         model = ConvKB(config)
     else:
-        raise Assertion('Unknown Model Name')
+        raise AssertionError('Unknown Model Name')
+
     model.to(config['DEVICE'])
     optimizer = torch.optim.SGD(model.parameters(), lr=config['LEARNING_RATE'])
 
@@ -181,6 +183,16 @@ if __name__ == "__main__":
                                                 n_ents=num_entities,
                                                 excluding_entities=ent_excluded_from_corr, trim=0.01)
 
+    # Saving stuff
+    if config['SAVE']:
+        savedir = Path(f"./models/{config['DATASET']}/{config['MODEL_NAME']}")
+        if not savedir.exists(): savedir.mkdir()
+        savedir = mt_save_dir(savedir, _newdir=True)
+        save_content = {'model': model, 'config': config}
+    else:
+        savedir, save_content = None, None
+
+
     args = {
         "epochs": config['EPOCHS'],
         "data": tr_data,
@@ -195,7 +207,9 @@ if __name__ == "__main__":
         "trn_testbench": evaluation_train.run,
         "eval_every": config['EVAL_EVERY'],
         "log_wandb": config['WANDB'],
-        "run_trn_testbench": config['RUN_TESTBENCH_ON_TRAIN']
+        "run_trn_testbench": config['RUN_TESTBENCH_ON_TRAIN'],
+        "savedir": savedir,
+        "save_content": save_content
     }
 
     traces = training_loop(**args)

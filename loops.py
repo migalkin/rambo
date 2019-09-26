@@ -21,7 +21,9 @@ def training_loop(epochs: int,
                   trn_testbench: Callable = default_eval,
                   eval_every: int = 1,
                   log_wandb: bool = True,
-                  run_trn_testbench: bool = True) -> (list, list, list):
+                  run_trn_testbench: bool = True,
+                  savedir: str = None,
+                  save_content: Dict[str, list] = None) -> (list, list, list):
     """
         A fn which can be used to train a language model.
 
@@ -46,6 +48,9 @@ def training_loop(epochs: int,
         :param eval_every: int which dictates after how many epochs should run testbenches
         :param log_wandb: bool which dictates whether we log things with wandb
         :param run_trn_testbench: bool which dictates whether we run testbench on train set
+        :param savedir: str of the dir where the models should be saved. None, if nothing should be saved.
+        :param save_content: data expected like {'torch_stuff':[], 'json_stuff':[]}
+                (see docstring mytorch.utils.goodies.mt_save)
     """
 
     train_loss = []
@@ -209,6 +214,16 @@ def training_loop(epochs: int,
                             'val_hits@10_b': float(per_epoch_vl_hits_10),
                         })
 
+                # We might wanna save the model, too
+                if savedir is not None:
+                    mt_save(
+                        savedir,
+                        torch_stuff=[tosave(obj=save_content['model'].state_dict(), fname='model.torch')],
+                        pickle_stuff=[tosave(fname='traces.pkl',
+                                             obj=[train_acc, train_loss, train_acc_bnchmk, train_mrr_bnchmk,
+                                                  train_hits_3_bnchmk, train_hits_5_bnchmk, train_hits_10_bnchmk,
+                                                  valid_acc, valid_mrr, valid_hits_3, valid_hits_5, valid_hits_10])],
+                        json_stuff=[tosave(obj=save_content['config'], fname='config.json')])
         else:
             # No test benches this time around
             print("Epoch: %(epo)03d | Loss: %(loss).5f | Tr_c: %(tracc)0.5f | "
