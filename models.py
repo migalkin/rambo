@@ -380,7 +380,7 @@ class ConvKB(BaseModule):
         statement_emb = statement_emb.view(statement_emb.shape[0], -1)
         score = self.fc(statement_emb)
         
-        return score
+        return score.squeeze()
 
     def _get_triple_embeddings(self, triples):
         
