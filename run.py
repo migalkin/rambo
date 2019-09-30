@@ -57,7 +57,7 @@ DEFAULT_CONFIG = {
     'NEGATIVE_SAMPLING_TIMES': 10,
     'BATCH_SIZE': 512,
     'EPOCHS': 1000,
-    'STATEMENT_LEN': -1,
+    'STATEMENT_LEN': 3,
     'EVAL_EVERY': 20,
     'WANDB': False,
     'RUN_TESTBENCH_ON_TRAIN': True,
@@ -66,7 +66,7 @@ DEFAULT_CONFIG = {
     'DEVICE': 'cpu',
     'ENT_POS_FILTERED': True,
     'USE_TEST': False,
-    'MAX_QPAIRS': 43,
+    'MAX_QPAIRS': 3,
     'NARY_EVAL': False,
     'SELF_ATTENTION': 0,
     'PROJECT_QUALIFIERS': False,
@@ -186,7 +186,7 @@ if __name__ == "__main__":
     # Saving stuff
     if config['SAVE']:
         savedir = Path(f"./models/{config['DATASET']}/{config['MODEL_NAME']}")
-        if not savedir.exists(): savedir.mkdir()
+        if not savedir.exists(): savedir.mkdir(parents=True)
         savedir = mt_save_dir(savedir, _newdir=True)
         save_content = {'model': model, 'config': config}
     else:
