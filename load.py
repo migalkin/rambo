@@ -553,22 +553,22 @@ def load_fb15k237() -> Dict:
             open(RAW_DATA_DIR / "train2id.txt", "r") as train_file, \
             open(RAW_DATA_DIR / "valid2id.txt", "r") as valid_file, \
             open(RAW_DATA_DIR / "test2id.txt", "r") as test_file:
-        num_entities = int(next(ent_file).strip("\n"))
-        num_relations = int(next(rel_file).strip("\n"))
+        num_entities = int(next(ent_file).strip("\n")) + 1          # One more for padding/unk
+        num_relations = int(next(rel_file).strip("\n")) + 1         # One more for padding/unk
         num_trains = int(next(train_file).strip("\n"))
         for line in train_file:
             triple = line.strip("\n").split(" ")
-            training_triples.append([int(triple[0]), int(triple[2]), int(triple[1])])
+            training_triples.append([int(triple[0])+1, int(triple[2])+1, int(triple[1])+1])
 
         num_valid = int(next(valid_file).strip("\n"))
         for line in valid_file:
             triple = line.strip("\n").split(" ")
-            valid_triples.append([int(triple[0]), int(triple[2]), int(triple[1])])
+            valid_triples.append([int(triple[0])+1, int(triple[2])+1, int(triple[1])+1])
 
         num_test = int(next(test_file).strip("\n"))
         for line in test_file:
             triple = line.strip("\n").split(" ")
-            test_triples.append([int(triple[0]), int(triple[2]), int(triple[1])])
+            test_triples.append([int(triple[0])+1, int(triple[2])+1, int(triple[1])+1])
 
     return {"train": training_triples, "valid": valid_triples, "test": test_triples, "num_entities": num_entities,
             "num_relations": num_relations}
@@ -590,22 +590,22 @@ def load_fb15k() -> Dict:
             open(RAW_DATA_DIR / "train2id.txt", "r") as train_file, \
             open(RAW_DATA_DIR / "valid2id.txt", "r") as valid_file, \
             open(RAW_DATA_DIR / "test2id.txt", "r") as test_file:
-        num_entities = int(next(ent_file).strip("\n"))
-        num_relations = int(next(rel_file).strip("\n"))
-        num_trains = int(next(train_file).strip("\n"))
+        num_entities = int(next(ent_file).strip("\n")) + 1
+        num_relations = int(next(rel_file).strip("\n")) + 1
+        num_trains = int(next(train_file).strip("\n")) + 1
         for line in train_file:
             triple = line.strip("\n").split(" ")
-            training_triples.append([int(triple[0]), int(triple[2]), int(triple[1])])
+            training_triples.append([int(triple[0])+1, int(triple[2])+1, int(triple[1])+1])
 
         num_valid = int(next(valid_file).strip("\n"))
         for line in valid_file:
             triple = line.strip("\n").split(" ")
-            valid_triples.append([int(triple[0]), int(triple[2]), int(triple[1])])
+            valid_triples.append([int(triple[0])+1, int(triple[2])+1, int(triple[1])+1])
 
         num_test = int(next(test_file).strip("\n"))
         for line in test_file:
             triple = line.strip("\n").split(" ")
-            test_triples.append([int(triple[0]), int(triple[2]), int(triple[1])])
+            test_triples.append([int(triple[0])+1, int(triple[2])+1, int(triple[1])+1])
 
     return {"train": training_triples, "valid": valid_triples, "test": test_triples, "num_entities": num_entities,
             "num_relations": num_relations}
@@ -688,10 +688,12 @@ if __name__ == "__main__":
     # ds4 = load_wd15k_qonly_triples()
     # print(len(ds4))
 
-    ds = load_wikipeople_quints()
-    tr = ds['train']
-    vl = ds['valid']
-    ts = ds['test']
-    ne = ds['num_entities']
-    nr = ds['num_relations']
-    print("Magic Mike!")
+    # ds = load_wikipeople_quints()
+    # tr = ds['train']
+    # vl = ds['valid']
+    # ts = ds['test']
+    # ne = ds['num_entities']
+    # nr = ds['num_relations']
+    # print("Magic Mike!")
+
+    load_fb15k237()
