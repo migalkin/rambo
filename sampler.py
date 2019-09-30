@@ -33,7 +33,6 @@ class SimpleSampler:
         self.i = min(self.i + self.bs, self.data.shape[0])
         return _pos
 
-
 # Make data iterator -> Modify Simple Iterator from mytorch
 class QuintRankingSampler:
     """
@@ -109,6 +108,41 @@ class QuintRankingSampler:
         self.i = min(self.i + self.bs, self.n)
 
         return _pos, _neg
+
+
+class NeighbourhoodSampler(SimpleSampler):
+    def __init__(self, data: Union[np.array, list], bs: int = 64, hashes: List[dict] = [{},{}]):
+        super().__init__(data, bs)
+        self.hop1, self.hop2 = hashes
+
+    def __next__(self):
+        """
+            Each time, take `bs` pos
+        """
+        if self.i >= self.data.shape[0]:
+            print("Should stop")
+            raise StopIteration
+
+        _pos = self.data[self.i: min(self.i + self.bs, len(self.data) - 1)]
+        self.i = min(self.i + self.bs, self.data.shape[0])
+
+
+        _entities = _pos[:,2] # all objects
+
+
+        # First and second neighbourhood
+        hop1, hop2 = [], []
+        for e in _entities:
+            hop1.append(self.hop1[e])
+            hop2.append(self.hop2[e])
+
+        #@TODO: pad them. But which direction?
+
+        hop1 = np.array(hop1)
+        hop2 = np.array(hop2)
+
+        return _pos, hop1, hop2
+
 
 
 class SingleSampler:
