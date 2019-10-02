@@ -287,8 +287,6 @@ class ConvKB(BaseModule):
 
         self.config = config
 
-        
-        
         self.conv = nn.Conv2d(in_channels=1, 
                               out_channels=config['NUM_FILTER'], kernel_size= (config['MAX_QPAIRS'],1), 
                              bias=True)
