@@ -8,13 +8,16 @@ import operator
 import numpy as np
 from typing import Tuple, List, Dict
 from parse_wd15k import Quint
+import argparse
 
 RAW_DATA_DIR = Path('./data/raw_data/wd15k')
 WD15K_DATA_DIR = Path('./data/parsed_data/wd15k')
 WD15K_QONLY = Path('./data/parsed_data/wd15k_qonly')
+WD15K_QONLY_33 = Path('./data/parsed_data/wd15k_qonly_33')
+WD15K_QONLY_66 = Path('./data/parsed_data/wd15k_qonly_66')
 np.random.seed(42)
 
-def split_statements(path, filter_qualifiers:bool) -> Tuple[List, List, List]:
+def split_statements(path, filter_qualifiers:bool, keep_prob: float) -> Tuple[List, List, List]:
     """
     Split into 70/10/20
     :param path: path to the cleaned_wd15k.pkl file
@@ -23,6 +26,9 @@ def split_statements(path, filter_qualifiers:bool) -> Tuple[List, List, List]:
     ds = pickle.load(open(path / "cleaned_wd15k.pkl", "rb"))
     if filter_qualifiers:
         ds = keep_only_quals(ds)
+        ds_stats(ds)
+        ds = remove_qualifiers(ds, keep_prob)
+        ds_stats(ds)
     ind = np.arange(len(ds))
     np.random.shuffle(ind)
     train_indices, valid_indices, test_indices = ind[:int(0.7 * len(ind))], ind[int(0.7 * len(ind)):int(
@@ -90,6 +96,13 @@ def ds_stats(dataset: List[Dict]):
         print(f"{m}: {len([a for a in dataset if len(a['qualifiers']) == m])}")
 
 
+def remove_qualifiers(ds: List[Dict], keep_prob: float = 0.33) -> List[Dict]:
+    for statement in ds:
+        if np.random.random() > keep_prob:
+            statement['qualifiers'] = []
+    return ds
+
+
 def keep_only_quals(ds: List[Dict]):
     """
 
@@ -98,10 +111,14 @@ def keep_only_quals(ds: List[Dict]):
     """
     return [i for i in ds if len(i["qualifiers"]) > 0]
 
+
 if __name__ == "__main__":
     only_q = True
+    keep_prob = 1.0
+    assert keep_prob <= 1.0, "You can't ask to keep more than 100% of qualifiers"
+    assert keep_prob >= 0.0, "You can't ask to keep less than 0% of qualifiers"
     # split the dataset into train/val/test
-    train, val, test = split_statements(RAW_DATA_DIR, filter_qualifiers=only_q)
+    train, val, test = split_statements(RAW_DATA_DIR, filter_qualifiers=only_q, keep_prob=keep_prob)
     # convert each chunk into triples/quints/full quints
     train_triples, valid_triples, test_triples = generate_triples(train), generate_triples(val), generate_triples(test)
     train_quints, valid_quints, test_quints = generate_quints(train), generate_quints(val), generate_quints(test)
@@ -110,6 +127,7 @@ if __name__ == "__main__":
     print(f"Quints: {len(train_quints)} train, {len(valid_quints)} val, {len(test_quints)} test")
     print(f"Statements: {len(train_statements)} train, {len(valid_statements)} val, {len(test_statements)} test")
     # write files
+    # raise Exception
     if not only_q:
         output_dir = WD15K_DATA_DIR
     else:
