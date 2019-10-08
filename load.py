@@ -153,7 +153,7 @@ def load_wd15k_quints() -> Dict:
              entoid[q[4]] if q[4] is not None else entoid['__na__']] for q in test_quints]
 
     return {"train": train, "valid": valid, "test": test, "num_entities": len(q_entities),
-            "num_relations": len(q_predicates)}
+            "num_relations": len(q_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_triples() -> Dict:
@@ -190,7 +190,7 @@ def load_wd15k_triples() -> Dict:
     test = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in test_triples]
 
     return {"train": train, "valid": valid, "test": test, "num_entities": len(triples_entities),
-            "num_relations": len(triples_predicates)}
+            "num_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_statements(maxlen: int) -> Dict:
@@ -239,7 +239,7 @@ def load_wd15k_statements(maxlen: int) -> Dict:
                                                                                                             maxlen)
 
     return {"train": train, "valid": valid, "test": test, "num_entities": len(st_entities),
-            "num_relations": len(st_predicates)}
+            "num_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_qonly_statements(maxlen: int) -> Dict:
@@ -283,7 +283,7 @@ def load_wd15k_qonly_statements(maxlen: int) -> Dict:
                                                                                                             maxlen)
 
     return {"train": train, "valid": valid, "test": test, "num_entities": len(st_entities),
-            "num_relations": len(st_predicates)}
+            "num_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_qonly_quints() -> Dict:
@@ -331,7 +331,7 @@ def load_wd15k_qonly_quints() -> Dict:
              entoid[q[4]]] for q in test_quints]
 
     return {"train": train, "valid": valid, "test": test, "num_entities": len(quints_entities),
-            "num_relations": len(quints_predicates)}
+            "num_relations": len(quints_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_qonly_triples() -> Dict:
@@ -363,7 +363,7 @@ def load_wd15k_qonly_triples() -> Dict:
     test = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in test_triples]
 
     return {"train": train, "valid": valid, "test": test, "num_entities": len(triples_entities),
-            "num_relations": len(triples_predicates)}
+            "num_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wikipeople_quints():
@@ -437,7 +437,7 @@ def load_wikipeople_quints():
              entoid[q[4]] if q[4] is not None else entoid['__na__']] for q in conv_tst]
 
     return {"train": train, "valid": valid, "test": test, "num_entities": len(q_entities),
-            "num_relations": len(q_predicates)}
+            "num_relations": len(q_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wikipeople_triples():
@@ -469,7 +469,7 @@ def load_wikipeople_triples():
     test = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in test_triples]
 
     return {"train": train, "valid": valid, "test": test, "num_entities": len(triples_entities),
-            "num_relations": len(triples_predicates)}
+            "num_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wikipeople_statements(maxlen=17) -> Dict:
@@ -534,7 +534,7 @@ def load_wikipeople_statements(maxlen=17) -> Dict:
                                                                                                             maxlen)
 
     return {"train": train, "valid": valid, "test": test, "num_entities": len(st_entities),
-            "num_relations": len(st_predicates)}
+            "num_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_fb15k237() -> Dict:
