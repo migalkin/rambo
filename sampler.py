@@ -5,9 +5,10 @@ class SimpleSampler:
     """
         Simply iterate over X
     """
+
     def __init__(self, data: Union[np.array, list], bs: int = 64):
         self.bs = bs
-        self.data = np.array(data) # pos data only motherfucker
+        self.data = np.array(data)  # pos data only motherfucker
 
         self.shuffle()
 
@@ -32,6 +33,7 @@ class SimpleSampler:
         _pos = self.data[self.i: min(self.i + self.bs, len(self.data) - 1)]
         self.i = min(self.i + self.bs, self.data.shape[0])
         return _pos
+
 
 # Make data iterator -> Modify Simple Iterator from mytorch
 class QuintRankingSampler:
@@ -111,7 +113,7 @@ class QuintRankingSampler:
 
 
 class NeighbourhoodSampler(SimpleSampler):
-    def __init__(self, data: Union[np.array, list], bs: int = 64, hashes: List[dict] = [{},{}]):
+    def __init__(self, data: Union[np.array, list], bs: int = 64, hashes: List[dict] = [{}, {}]):
         super().__init__(data, bs)
         self.hop1, self.hop2 = hashes
 
@@ -119,36 +121,39 @@ class NeighbourhoodSampler(SimpleSampler):
         """
             Each time, take `bs` pos
         """
-        if self.i >= self.data.shape[0]:
-            print("Should stop")
-            raise StopIteration
+        # if self.i >= self.data.shape[0]:
+        #     print("Should stop")
+        #     raise StopIteration
+        #
+        # _pos = self.data[self.i: min(self.i + self.bs, len(self.data) - 1)]
+        # self.i = min(self.i + self.bs, self.data.shape[0])
 
-        _pos = self.data[self.i: min(self.i + self.bs, len(self.data) - 1)]
-        self.i = min(self.i + self.bs, self.data.shape[0])
+        _pos = super().__next__()
 
-
-        _entities = _pos[:,2] # all objects
-
+        _entities = _pos[:, 2]  # all objects
 
         # First and second neighbourhood
         hop1, hop2 = [], []
         for e in _entities:
-            hop1.append(self.hop1[e])
-            hop2.append(self.hop2[e])
+            hop1.append(self.hop1[e])       # Hop1 is list of list of tuples
+            hop2.append(self.hop2[e])       # Hop2 is list of list of tuples
 
-        #@TODO: pad them. But which direction?
+        # Pad Stuff
+        _pad = (0, 0)
+        max1, max2 = max(len(neighbors) for neighbors in hop1), max(len(neighbors) for neighbors in hop2)
+        _hop1, _hop2 = np.zeros((self.bs, max1, 2)), np.zeros((self.bs, max2, 3))
+        for i, datum in enumerate(hop1):
+            _hop1[i, :len(datum)] = datum
+        for i, datum in enumerate(hop2):
+            _hop2[i, :len(datum)] = datum
 
-        hop1 = np.array(hop1)
-        hop2 = np.array(hop2)
-
-        return _pos, hop1, hop2
-
+        return _pos, _hop1, _hop2
 
 
 class SingleSampler:
     """
         Another sampler which gives correct + all corrupted things for one triple
-        [NOTE]: Depriciated
+        [NOTE]: Depreciated
     """
 
     def __init__(self, data: dict, bs: int, n_items: int = 5):
