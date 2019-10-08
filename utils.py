@@ -49,7 +49,7 @@ def create_neighbourhood_hashes(data: Dict) -> (Dict,Dict):
     print("Creating hop1 hash.")
     hop1 = {}
 
-    for s, p, o in data['train'] + data['valid'] + data['test']:
+    for s, p, o in data['train']: #+ data['valid'] + data['test']:
         try:
             # prun already existing triple
             hop1[o].append((p, s))
