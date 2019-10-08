@@ -47,33 +47,41 @@ random.seed(42)
             Anything else, no self attention is used.
 """
 DEFAULT_CONFIG = {
+    'BATCH_SIZE': 512,
+    'DATASET': 'wd15k',
+    'DEVICE': 'cpu',
     'EMBEDDING_DIM': 50,
-    'NORM_FOR_NORMALIZATION_OF_ENTITIES': 2,
-    'NORM_FOR_NORMALIZATION_OF_RELATIONS': 2,
-    'SCORING_FUNCTION_NORM': 1,
-    'MARGIN_LOSS': 5,
+    'ENT_POS_FILTERED': True,
+    'EPOCHS': 1000,
+    'EVAL_EVERY': 20,
     'LEARNING_RATE': 0.001,
+    'MARGIN_LOSS': 5,
+    'MAX_QPAIRS': 43,
+    'MODEL_NAME': 'ConvKB',
+    'NARY_EVAL': False,
     'NEGATIVE_SAMPLING_PROBS': [0.3, 0.0, 0.2, 0.5],
     'NEGATIVE_SAMPLING_TIMES': 10,
-    'BATCH_SIZE': 512,
-    'EPOCHS': 1000,
+    'NORM_FOR_NORMALIZATION_OF_ENTITIES': 2,
+    'NORM_FOR_NORMALIZATION_OF_RELATIONS': 2,
+    'NUM_FILTER': 5,
+    'PROJECT_QUALIFIERS': False,
+    'SAVE': False,
+    'SCORING_FUNCTION_NORM': 1,
     'STATEMENT_LEN': -1,
-    'EVAL_EVERY': 20,
     'WANDB': False,
     'RUN_TESTBENCH_ON_TRAIN': True,
-    'DATASET': 'wd15k',
     'CORRUPTION_POSITIONS': [0, 2],
-    'DEVICE': 'cpu',
-    'ENT_POS_FILTERED': True,
     'USE_TEST': False,
-    'MAX_QPAIRS': 43,
-    'NARY_EVAL': False,
-    'SELF_ATTENTION': 0,
-    'PROJECT_QUALIFIERS': False,
-    'NUM_FILTER': 5,
-    'MODEL_NAME': 'ConvKB',
-    'SAVE': False
+    'SELF_ATTENTION': 0
 }
+
+KBGATARGS = {
+    'OUT': 25,
+    'HEAD': 3,
+    'ALPHA': 0.5
+}
+
+DEFAULT_CONFIG['KBGATARGS'] = KBGATARGS
 
 if __name__ == "__main__":
 
@@ -192,7 +200,6 @@ if __name__ == "__main__":
     else:
         savedir, save_content = None, None
 
-
     args = {
         "epochs": config['EPOCHS'],
         "data": tr_data,
@@ -211,6 +218,10 @@ if __name__ == "__main__":
         "savedir": savedir,
         "save_content": save_content
     }
+
+    if config['MODEL_NAME'] == 'kbgat':
+        # Change the data fn
+        ...
 
     traces = training_loop(**args)
 

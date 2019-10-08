@@ -507,7 +507,8 @@ class KBGat(BaseModule):
         self.gat1.initialize(), self.gat2.initialize()
 
     def predict(self, triples_hops) -> torch.Tensor:
-        pass
+        scores = self._score_triples(triples_hops)
+        return scores
 
     def normalize(self) -> None:
 
@@ -520,7 +521,7 @@ class KBGat(BaseModule):
         # zeroing the padding index
         self.entity_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)
 
-    def forward(self, pos: List, neg: List) -> torch.Tensor:
+    def forward(self, pos: List, neg: List) -> (tuple, torch.Tensor):
         """
             triples of size: (bs, 3)
                hop1 of size: (bs, n, 2) (s and r)
