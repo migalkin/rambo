@@ -108,7 +108,7 @@ if __name__ == "__main__":
     """
     data = DataManager.load(config=DEFAULT_CONFIG)()
     try:
-        training_triples, valid_triples, test_triples, num_entities, num_relations = data.values()
+        training_triples, valid_triples, test_triples, num_entities, num_relations, _, _ = data.values()
     except ValueError:
         raise ValueError(f"Honey I broke the loader for {DEFAULT_CONFIG['DATASET']}")
 
