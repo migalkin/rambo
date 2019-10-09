@@ -50,32 +50,25 @@ def create_neighbourhood_hashes(data: Dict) -> (Dict,Dict):
     hop1 = {}
 
     for s, p, o in data['train']: #+ data['valid'] + data['test']:
-        try:
-            # prun already existing triple
-            hop1[o].append((p, s))
-            hop1[o] = list(set(hop1[o]))
-        except:
-            # print(traceback.print_exc())
-            hop1[o] = [(p, s)]
+        hop1.setdefault(o, []).append((s, p))
+        hop1[o] = list(set(hop1[o]))
 
     print("Creating hop2 hash. This will take around 2-3 mins.")
     hop2 = {}
     for o in hop1.keys():
-        _hop1 = hop1[o]
+        neighbors_of_o = hop1[o]
         _hop2 = []
-        for p1, o1 in _hop1:
-            try:
-                _temp = hop1[o1]
-                _temp = [tuple([p1] + list(t)) for t in _temp]
-                _hop2 = _hop2 + _temp
-            except:
-                continue
-        try:
-            hop2[o].append(_hop2)
-            hop2[o] = list(set(hop2[o]))
-        except:
-            hop2[o] = _hop2
+        for o1, p1 in neighbors_of_o:
+            _temp = hop1.get(o1, [])
+            _temp = [tuple(list(t) + [p1]) for t in _temp]
+            _hop2 = _hop2 + _temp
+
+        # If no neighbors found (for some reason), don't add it
+        if not _hop2:
+            continue
+
+        hop2.setdefault(o, []).extend(_hop2)
+        hop2[o] = list(set(hop2[o]))
 
     hop2 = {k: list(set(v)) for k, v in hop2.items()}
-
     return hop1, hop2

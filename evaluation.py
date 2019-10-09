@@ -144,8 +144,6 @@ class EvaluationBenchArity(EvaluationBench):
     """
         Sampler like evaluationbench but with expressions of different arity grouped together
     """
-
-
     @staticmethod
     def summarize_run(summary: dict):
         """ Nicely print what just went down """

@@ -1,5 +1,5 @@
 from utils import *
-
+from corruption import Corruption
 
 class SimpleSampler:
     """
@@ -113,30 +113,43 @@ class QuintRankingSampler:
 
 
 class NeighbourhoodSampler(SimpleSampler):
-    def __init__(self, data: Union[np.array, list], bs: int = 64, hashes: List[dict] = [{}, {}]):
+    def __init__(self, data: Union[np.array, list], corruptor: Corruption, bs: int = 64, hashes=None):
         super().__init__(data, bs)
-        self.hop1, self.hop2 = hashes
+        self.corruptor = corruptor
+        self.hop1, self.hop2 = hashes if hashes is not None else [{}, {}]
 
     def __next__(self):
         """
-            Each time, take `bs` pos
+            Each time, take `bs` pos, get neg, get hops for both pos and neg...
         """
-        # if self.i >= self.data.shape[0]:
-        #     print("Should stop")
-        #     raise StopIteration
-        #
-        # _pos = self.data[self.i: min(self.i + self.bs, len(self.data) - 1)]
-        # self.i = min(self.i + self.bs, self.data.shape[0])
 
         _pos = super().__next__()
+        _neg = self.corruptor.corrupt_batch(_pos)
 
-        _entities = _pos[:, 2]  # all objects
+        _pos_objs = _pos[:, 2]  # all Pos (bs)
+        _neg_objs = _neg[:, 2]  # all Neg (bs)
+
+        _pos_hop1, _pos_hop2 = self.get_neighborhoods(_pos_objs)
+        _neg_hop1, _neg_hop2 = self.get_neighborhoods(_neg_objs)
+
+        return _pos, _pos_hop1, _pos_hop2, _neg, _neg_hop1, _neg_hop2
+
+    def get_neighborhoods(self, objs: list) -> (np.ndarray, np.ndarray):
+        """
+            Pull hop1, hop2 from self.hop*, and then pad and return
+
+        :param objs: list of objects
+        :return: (nparr hop1, nparr hop2)
+        """
 
         # First and second neighbourhood
         hop1, hop2 = [], []
-        for e in _entities:
-            hop1.append(self.hop1[e])       # Hop1 is list of list of tuples
-            hop2.append(self.hop2[e])       # Hop2 is list of list of tuples
+        for e in objs:
+            hop1.append(self.hop1.get(e, [0, 0]))       # Hop1 is list of list of tuples
+            hop2.append(self.hop2.get(e, [0, 0, 0]))       # Hop2 is list of list of tuples
+
+        if [] in hop1 or [] in hop2:
+            print('shit')
 
         # Pad Stuff
         _pad = (0, 0)
@@ -147,7 +160,7 @@ class NeighbourhoodSampler(SimpleSampler):
         for i, datum in enumerate(hop2):
             _hop2[i, :len(datum)] = datum
 
-        return _pos, _hop1, _hop2
+        return _hop1, _hop2
 
 
 class SingleSampler:

@@ -2,7 +2,6 @@
     The file which actually manages to run everything
 """
 import os
-
 os.environ['MKL_NUM_THREADS'] = '1'
 
 from functools import partial
@@ -18,10 +17,10 @@ from parse_wd15k import Quint
 from load import DataManager
 from utils import *
 from evaluation import EvaluationBench, EvaluationBenchArity, acc, mrr, mr, hits_at, evaluate_pointwise
-from models import TransE, ConvKB
+from models import TransE, ConvKB, KBGat
 from corruption import Corruption
-from sampler import SimpleSampler
-from loops import training_loop
+from sampler import SimpleSampler, NeighbourhoodSampler
+from loops import training_loop, training_loop_neighborhood
 
 """
     CONFIG Things
@@ -48,6 +47,7 @@ random.seed(42)
 """
 DEFAULT_CONFIG = {
     'BATCH_SIZE': 512,
+    'CORRUPTION_POSITIONS': [0, 2],
     'DATASET': 'wd15k',
     'DEVICE': 'cpu',
     'EMBEDDING_DIM': 50,
@@ -65,14 +65,14 @@ DEFAULT_CONFIG = {
     'NORM_FOR_NORMALIZATION_OF_RELATIONS': 2,
     'NUM_FILTER': 5,
     'PROJECT_QUALIFIERS': False,
+    'PRETRAINED_DIRNUM': '',
+    'RUN_TESTBENCH_ON_TRAIN': True,
     'SAVE': False,
+    'SELF_ATTENTION': 0,
     'SCORING_FUNCTION_NORM': 1,
     'STATEMENT_LEN': -1,
-    'WANDB': False,
-    'RUN_TESTBENCH_ON_TRAIN': True,
-    'CORRUPTION_POSITIONS': [0, 2],
     'USE_TEST': False,
-    'SELF_ATTENTION': 0
+    'WANDB': False
 }
 
 KBGATARGS = {
@@ -115,11 +115,21 @@ if __name__ == "__main__":
         Load data based on the args/config
     """
     data = DataManager.load(config=DEFAULT_CONFIG)()
+
+    # Break down the data
     try:
         training_triples, valid_triples, test_triples, num_entities, num_relations = data.values()
     except ValueError:
         raise ValueError(f"Honey I broke the loader for {DEFAULT_CONFIG['DATASET']}")
 
+    # KBGat Specific hashes (to compute neighborhood)
+    if DEFAULT_CONFIG['MODEL_NAME'].lower() == 'kbgat':
+        assert DEFAULT_CONFIG['DATASET'] == 'fb15k237'
+        hashes = create_neighbourhood_hashes(data)
+    else:
+        hashes = None
+
+    # Exclude entities which don't appear in
     if DEFAULT_CONFIG['ENT_POS_FILTERED']:
         ent_excluded_from_corr = DataManager.gather_missing_entities(
             data=training_triples + valid_triples + test_triples,
@@ -145,6 +155,12 @@ if __name__ == "__main__":
         model = TransE(config)
     elif config['MODEL_NAME'].lower() == 'convkb':
         model = ConvKB(config)
+    elif config['MODEL_NAME'].lower() == 'kbgat':
+        if config['PRETRAINED_DIRNUM'] != '': #@TODO: how do we pull the models
+            pretrained_models = ...
+        else:
+            pretrained_models = None
+        model = KBGat(config, pretrained_models)
     else:
         raise AssertionError('Unknown Model Name')
 
@@ -171,24 +187,18 @@ if __name__ == "__main__":
     eval_metrics = [acc, mrr, mr, partial(hits_at, k=3), partial(hits_at, k=5), partial(hits_at, k=10)]
 
     if not config['NARY_EVAL']:
-        evaluation_valid = EvaluationBench(data, model, bs=8000,
-                                           metrics=eval_metrics, filtered=True,
-                                           n_ents=num_entities,
-                                           excluding_entities=ent_excluded_from_corr,
+        evaluation_valid = EvaluationBench(data, model, bs=8000, metrics=eval_metrics, filtered=True,
+                                           n_ents=num_entities, excluding_entities=ent_excluded_from_corr,
                                            positions=config.get('CORRUPTION_POSITIONS', None))
-        evaluation_train = EvaluationBench(_data, model, bs=8000,
-                                           metrics=eval_metrics, filtered=True,
-                                           n_ents=num_entities,
-                                           excluding_entities=ent_excluded_from_corr,
+        evaluation_train = EvaluationBench(_data, model, bs=8000, metrics=eval_metrics, filtered=True,
+                                           n_ents=num_entities, excluding_entities=ent_excluded_from_corr,
                                            positions=config.get('CORRUPTION_POSITIONS', None), trim=0.01)
     else:
-        evaluation_valid = EvaluationBenchArity(data, model, bs=8000,
-                                                metrics=eval_metrics, filtered=True,
-                                                n_ents=num_entities,
+        evaluation_valid = EvaluationBenchArity(data, model, bs=8000, metrics=eval_metrics,
+                                                filtered=True, n_ents=num_entities,
                                                 excluding_entities=ent_excluded_from_corr)
-        evaluation_train = EvaluationBenchArity(_data, model, bs=8000,
-                                                metrics=eval_metrics, filtered=True,
-                                                n_ents=num_entities,
+        evaluation_train = EvaluationBenchArity(_data, model, bs=8000, metrics=eval_metrics,
+                                                filtered=True, n_ents=num_entities,
                                                 excluding_entities=ent_excluded_from_corr, trim=0.01)
 
     # Saving stuff
@@ -221,7 +231,11 @@ if __name__ == "__main__":
 
     if config['MODEL_NAME'] == 'kbgat':
         # Change the data fn
-        ...
+        neg_generator = args.pop('neg_generator')
+        args['data_fn'] = partial(NeighbourhoodSampler, bs=config["BATCH_SIZE"], corruptor=neg_generator,
+                                  hashes=hashes)
+
+        training_loop = training_loop_neighborhood
 
     traces = training_loop(**args)
 

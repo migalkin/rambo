@@ -395,7 +395,7 @@ class ConvKB(BaseModule):
 
 class GraphAttentionLayerMultiHead(nn.Module):
 
-    def __init__(self, config: dict, final_layer: bool = False):
+    def __init__(self, config: dict, residual_dim: int = 0, final_layer: bool = False):
 
         super().__init__()
 
@@ -405,7 +405,7 @@ class GraphAttentionLayerMultiHead(nn.Module):
         num_head = config['KBGATARGS']['HEAD']
         alpha_leaky = config['KBGATARGS']['ALPHA']
 
-        self.w1 = nn.Linear(2 * ent_emb_dim + rel_emb_dim, out_features)
+        self.w1 = nn.Linear(2 * ent_emb_dim + rel_emb_dim + residual_dim, out_features)
         self.w2 = nn.Linear(out_features, num_head)
         self.relu = nn.LeakyReLU(alpha_leaky)
 
@@ -469,7 +469,8 @@ class KBGat(BaseModule):
             self.proj_mat = nn.Linear(2 * self.embedding_dim, self.embedding_dim, bias=False)
 
         self.gat1 = GraphAttentionLayerMultiHead(self.config, final_layer=False)
-        self.gat2 = GraphAttentionLayerMultiHead(self.config, final_layer=True)
+        self.gat2 = GraphAttentionLayerMultiHead(self.config, residual_dim=self.config['EMBEDDING_DIM'],
+                                                 final_layer=True)
 
         # Note: not initing them
         self.wr = nn.Linear(config['EMBEDDING_DIM'], config['KBGATARGS']['OUT'])
@@ -507,7 +508,7 @@ class KBGat(BaseModule):
         self.gat1.initialize(), self.gat2.initialize()
 
     def predict(self, triples_hops) -> torch.Tensor:
-        scores = self._score_triples(triples_hops)
+        scores = self._score_triples_(triples_hops)
         return scores
 
     def normalize(self) -> None:
@@ -537,13 +538,13 @@ class KBGat(BaseModule):
 
         self.normalize()
 
-        positive_scores = self._score_triples(pos_triples, pos_hop1, pos_hop2)
-        negative_scores = self._score_triples(neg_triples, neg_hop1, neg_hop2)
+        positive_scores = self._score_triples_(pos_triples, pos_hop1, pos_hop2)
+        negative_scores = self._score_triples_(neg_triples, neg_hop1, neg_hop2)
 
         loss = self._compute_loss(positive_scores=positive_scores, negative_scores=negative_scores)
         return (positive_scores, negative_scores), loss
 
-    def score_triples(self,
+    def _score_triples_(self,
                       triples: torch.Tensor,
                       hop1: torch.Tensor,
                       hop2: torch.Tensor) -> torch.Tensor:
@@ -556,14 +557,14 @@ class KBGat(BaseModule):
             2. Concat hop1, hop2 to be (bs, n, 3*emb) and (bs, n, 4*emb) each
             3. Pass the baton to some other function.
         """
-        s, p, o, h1_s, h1_p, h2_s, h2_p1, h2_p2 = self.embed(triples, hop1, hop2)
+        s, p, o, h1_s, h1_p, h2_s, h2_p1, h2_p2 = self._embed_(triples, hop1, hop2)
 
-        hf = self._score_o(s, p, o, h1_s, h1_p, h2_s, h2_p1, h2_p2)
+        hf = self._score_o_(s, p, o, h1_s, h1_p, h2_s, h2_p1, h2_p2)
         sum_res = s + p - hf
         distances = torch.norm(sum_res, dim=1, p=self.scoring_fct_norm).view(size=(-1,))
         return distances
 
-    def _score_o(self, s: torch.Tensor, p: torch.Tensor, o: torch.Tensor,
+    def _score_o_(self, s: torch.Tensor, p: torch.Tensor, o: torch.Tensor,
                  h1_s: torch.Tensor, h1_p: torch.Tensor,
                  h2_s: torch.Tensor, h2_p1: torch.Tensor, h2_p2: torch.Tensor) -> torch.Tensor:
         """
@@ -599,7 +600,7 @@ class KBGat(BaseModule):
         self.normalize()
 
         # Do the G` = G*W thing here
-        gat1_p = self.wr(p)                                             # rels : (bs, emb')
+        gat1_p = self.wr(p.squeeze(1))                                             # rels : (bs, emb')
         gat1_op_concat = torch.cat((gat1_op, gat1_p), dim=-1)           # op   : (bs, emb'+num_head*out_dim)
 
         # Average h2_p1, h2_p2
@@ -615,11 +616,11 @@ class KBGat(BaseModule):
         self.normalize()
 
         # Eq. 12 (H'' = W^EH^T + H^F)
-        hf = torch.cat((hf, self.we(o)))                                # hf   : (bs, out_dim*2)
+        hf = torch.cat((hf, self.we(o.squeeze(1))), dim=-1)                                # hf   : (bs, out_dim*2)
 
         return hf
 
-    def embed(self, tr, h1, h2):
+    def _embed_(self, tr, h1, h2):
         """ The obj is to pass things through entity and rel matrices as needed """
         # Triple
         s, p, o = slice_triples(tr, 3)                                  # *    : (bs, 1)
