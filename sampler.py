@@ -129,12 +129,12 @@ class NeighbourhoodSampler(SimpleSampler):
         _pos_objs = _pos[:, 2]  # all Pos (bs)
         _neg_objs = _neg[:, 2]  # all Neg (bs)
 
-        _pos_hop1, _pos_hop2 = self.get_neighborhoods(_pos_objs)
-        _neg_hop1, _neg_hop2 = self.get_neighborhoods(_neg_objs)
+        _pos_hop1, _pos_hop2 = self._get_neighborhoods_(_pos_objs)
+        _neg_hop1, _neg_hop2 = self._get_neighborhoods_(_neg_objs)
 
         return _pos, _pos_hop1, _pos_hop2, _neg, _neg_hop1, _neg_hop2
 
-    def get_neighborhoods(self, objs: list) -> (np.ndarray, np.ndarray):
+    def _get_neighborhoods_(self, objs: list) -> (np.ndarray, np.ndarray):
         """
             Pull hop1, hop2 from self.hop*, and then pad and return
 

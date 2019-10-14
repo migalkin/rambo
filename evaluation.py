@@ -88,7 +88,7 @@ class EvaluationBench:
             Calling this iterates through different data points, generates negatives, passes them to the model,
                 collects the scores, computes the metrics, and reports them.
 
-            Update: run functino now actually goes over only
+            Update: run function now actually goes over only ?? @todo
         """
         metrics = []
 
