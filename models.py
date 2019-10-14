@@ -332,8 +332,8 @@ class ConvKB(BaseModule):
         y = np.repeat([-1], repeats=positive_scores.shape[0])  # n item here (all -1)
         y = torch.tensor(y, dtype=torch.float, device=self.device)
 
-        pos_loss = self.criterion(positive_scores, -1 * y)
-        neg_loss = self.criterion(negative_scores, y)
+        pos_loss = self.criterion(positive_scores, y)
+        neg_loss = self.criterion(negative_scores, -1 * y)
         return pos_loss + neg_loss
 
     def forward(self, batch_positives, batch_negatives) \
