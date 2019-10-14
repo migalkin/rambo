@@ -393,256 +393,57 @@ class ConvKB(BaseModule):
         return self.relation_embeddings(relations).view(-1, self.embedding_dim)
 
 
-class GraphAttentionLayerMultiHead(nn.Module):
 
-    def __init__(self, config: dict, residual_dim: int = 0, final_layer: bool = False):
 
-        super().__init__()
 
-        # Parse params
-        ent_emb_dim, rel_emb_dim = config['EMBEDDING_DIM'], config['EMBEDDING_DIM']
-        out_features = config['KBGATARGS']['OUT']
-        num_head = config['KBGATARGS']['HEAD']
-        alpha_leaky = config['KBGATARGS']['ALPHA']
+class DenseClf(nn.Module):
 
-        self.w1 = nn.Linear(2 * ent_emb_dim + rel_emb_dim + residual_dim, out_features)
-        self.w2 = nn.Linear(out_features, num_head)
-        self.relu = nn.LeakyReLU(alpha_leaky)
-
-        self.final = final_layer
-
-        # Why copy un-necessary stuff
-        self.heads = num_head
-
-        # Not initializing here. Should be called by main module
-
-    def initialize(self):
-        nn.init.xavier_normal_(self.w1.weight.data, gain=1.414)
-        nn.init.xavier_normal_(self.w2.weight.data, gain=1.414)
-
-    def forward(self, data: torch.Tensor, mask: torch.Tensor = None):
+    def __init__(self, inputdim, hiddendim, outputdim):
         """
-            data: size (batchsize, num_neighbors, 2*ent_emb+rel_emb) or (bs, n, emb)
-            mask: size (batchsize, num_neighbors)
-
-            PS: num_neighbors is padded either with max neighbors or with a limit
-        """
-        # data: bs, n, emb
-        bs, _, _ = data.shape
-
-        c = self.w1(data)                                   # c: bs, n, out_features
-        b = self.relu(self.w2(c)).squeeze()                 # b: bs, n, num_heads
-        m = mask.unsqueeze(-1).repeat(1, 1, self.heads)     # m: bs, n, num_heads
-        alphas = masked_softmax(b, m, dim=1)                # α: bs, n, num_heads
-
-        # BMM simultaneously weighs the triples and sums across neighbors
-        h = torch.bmm(c.transpose(1, 2), alphas)            # h: bs, out_features, num_heads
-
-        if self.final:
-            h = torch.mean(h, dim=-1)                       # h: bs, out_features
-        else:
-            h = F.elu(h.view(bs, -1))                       # h: bs, out_features*num_heads
-
-        return h
-
-
-class KBGat(BaseModule):
-    model_name = 'KBGAT'
-
-    def __init__(self, config: dict, pretrained_embeddings=None) -> None:
-
-        self.margin_ranking_loss_size_average: bool = True
-        self.entity_embedding_max_norm: Optional[int] = None
-        self.entity_embedding_norm_type: int = 2
-        self.model_name = 'KBGAT'
-        super().__init__(config)
-        self.statement_len = config['STATEMENT_LEN']
-
-        # Embeddings
-        self.l_p_norm_entities = config['NORM_FOR_NORMALIZATION_OF_ENTITIES']
-        self.scoring_fct_norm = config['SCORING_FUNCTION_NORM']
-        self.relation_embeddings = nn.Embedding(config['NUM_RELATIONS'], config['EMBEDDING_DIM'], padding_idx=0)
-
-        self.config = config
-
-        if self.config['PROJECT_QUALIFIERS']:
-            self.proj_mat = nn.Linear(2 * self.embedding_dim, self.embedding_dim, bias=False)
-
-        self.gat1 = GraphAttentionLayerMultiHead(self.config, final_layer=False)
-        self.gat2 = GraphAttentionLayerMultiHead(self.config, residual_dim=self.config['EMBEDDING_DIM'],
-                                                 final_layer=True)
-
-        # Note: not initing them
-        self.wr = nn.Linear(config['EMBEDDING_DIM'], config['KBGATARGS']['OUT'])
-        self.we = nn.Linear(config['EMBEDDING_DIM'], config['KBGATARGS']['OUT'])
-
-        # Put in weights
-        self._initialize(pretrained_embeddings)
-
-    def _initialize(self, pretrained_embeddings):
-        if pretrained_embeddings is None:
-            embeddings_init_bound = 6 / np.sqrt(self.config['EMBEDDING_DIM'])
-            nn.init.uniform_(
-                self.entity_embeddings.weight.data,
-                a=-embeddings_init_bound,
-                b=+embeddings_init_bound,
-            )
-            nn.init.uniform_(
-                self.relation_embeddings.weight.data,
-                a=-embeddings_init_bound,
-                b=+embeddings_init_bound,
-            )
-
-            norms = torch.norm(self.relation_embeddings.weight,
-                               p=self.config['NORM_FOR_NORMALIZATION_OF_RELATIONS'], dim=1).data
-            self.relation_embeddings.weight.data = self.relation_embeddings.weight.data.div(
-                norms.view(self.num_relations, 1).expand_as(self.relation_embeddings.weight))
-
-            self.relation_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)
-            self.entity_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)  # zeroing the padding index
-
-        else:
-            raise NotImplementedError("Haven't wired in the mechanism to load weights yet fam")
-
-        # Also init the GATs with bacteria and tapeworms
-        self.gat1.initialize(), self.gat2.initialize()
-
-    def predict(self, triples_hops) -> torch.Tensor:
-        scores = self._score_triples_(triples_hops)
-        return scores
-
-    def normalize(self) -> None:
-
-        # Normalize embeddings of entities
-        norms = torch.norm(self.entity_embeddings.weight, p=self.l_p_norm_entities, dim=1).data
-
-        self.entity_embeddings.weight.data = self.entity_embeddings.weight.data.div(
-            norms.view(self.num_entities, 1).expand_as(self.entity_embeddings.weight))
-
-        # zeroing the padding index
-        self.entity_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)
-
-    def forward(self, pos: List, neg: List) -> (tuple, torch.Tensor):
-        """
-            triples of size: (bs, 3)
-               hop1 of size: (bs, n, 2) (s and r)
-               hop2 of size: (bs, n, 3) (s and r1 and r2)
-
-            (here n -> num_neighbors)
-            (here hop2 has for bc it is <s r1 r2 o> )
-
-            (pos has pos_triples, pos_hop1, pos_hop2. neg has same.)
-        """
-        pos_triples, pos_hop1, pos_hop2 = pos
-        neg_triples, neg_hop1, neg_hop2 = neg
-
-        self.normalize()
-
-        positive_scores = self._score_triples_(pos_triples, pos_hop1, pos_hop2)
-        negative_scores = self._score_triples_(neg_triples, neg_hop1, neg_hop2)
-
-        loss = self._compute_loss(positive_scores=positive_scores, negative_scores=negative_scores)
-        return (positive_scores, negative_scores), loss
-
-    def _score_triples_(self,
-                      triples: torch.Tensor,
-                      hop1: torch.Tensor,
-                      hop2: torch.Tensor) -> torch.Tensor:
-        """
-            triples of size: (bs, 3)
-            hop1 of size: (bs, n, 2) (s, p) (o is same as that of triples)
-            hop2 of size: (bs, n, 3) (s, p1, p2) (o is same as that of triples)
-
-            1. Embed all things so triples (bs, 3, emb), hop1 (bs, n, 3, emb), hop2 (bs, n, 4, emb)
-            2. Concat hop1, hop2 to be (bs, n, 3*emb) and (bs, n, 4*emb) each
-            3. Pass the baton to some other function.
-        """
-        s, p, o, h1_s, h1_p, h2_s, h2_p1, h2_p2 = self._embed_(triples, hop1, hop2)
-
-        hf = self._score_o_(s, p, o, h1_s, h1_p, h2_s, h2_p1, h2_p2)
-        sum_res = s + p - hf
-        distances = torch.norm(sum_res, dim=1, p=self.scoring_fct_norm).view(size=(-1,))
-        return distances
-
-    def _score_o_(self, s: torch.Tensor, p: torch.Tensor, o: torch.Tensor,
-                 h1_s: torch.Tensor, h1_p: torch.Tensor,
-                 h2_s: torch.Tensor, h2_p1: torch.Tensor, h2_p2: torch.Tensor) -> torch.Tensor:
-        """
-            Expected embedded tensors: following
-
-            s:  (bs, emb)
-            p:  (bs, emb)
-            o:  (bs, emb)
-            h1_s: (bs, n, emb)
-            h1_p: (bs, n, emb)
-            h2_s: (bs, n, emb)
-            h2_p1: (bs, n, emb)
-            h2_p2: (bs, n, emb)
-
-            Next:
-              -> compute mask1, cat o to it, and push to gat 1
-              -> compute mask2, cat gat1op to it, and push to gat 2
-              -> do all the residual connections
-              -> return final score
+            This class has a two layer dense network of changable dims.
+            Intended use case is that of
+                - *bidir dense*:
+                    give it [v_q, v_p] and it gives a score.
+                    in this case, have outputdim as 1
+                - * bidir dense dot*
+                    give it v_q and it gives a condensed vector
+                    in this case, have any outputdim, preferably outputdim < inputdim
+        :param inputdim: int: #neurons
+        :param hiddendim: int: #neurons
+        :param outputdim: int: #neurons
         """
 
-        # Compute Masks
-        mask1 = compute_mask(h1_s)[:, :, 0]                             # m1   : (bs, n)
-        mask2 = compute_mask(h2_s)[:, :, 0]                             # m2   : (bs, n)
+        super(DenseClf, self).__init__()
 
-        # Cat `o` in in h1
-        h1_o = o.repeat(1, h1_s.shape[1], 1)                            # h1_o : (bs, n, emb)
-        h1_o = h1_o * mask1.unsqueeze(-1)                               # h1_o : (bs, n, emb)
-        h1 = torch.cat((h1_s, h1_p, h1_o), dim=-1)                      # h1   : (bs, n, 3*emb)
+        self.inputdim = int(inputdim)
+        self.hiddendim = int(hiddendim)
+        self.outputdim = int(outputdim)
+        self.hidden = nn.Linear(self.inputdim, self.outputdim)
+        # self.output = nn.Linear(self.hiddendim, self.outputdim)
 
-        # Pass to first graph attn layer
-        gat1_op = self.gat1(h1, mask1)                                  # op   : (bs, num_head*out_dim)
-        self.normalize()
+    def forward(self, x):
+        """
 
-        # Do the G` = G*W thing here
-        gat1_p = self.wr(p.squeeze(1))                                             # rels : (bs, emb')
-        gat1_op_concat = torch.cat((gat1_op, gat1_p), dim=-1)           # op   : (bs, emb'+num_head*out_dim)
+        :param x: bs*sl
+        :return:
+        """
+        _x = F.sigmoid(self.hidden(x))
 
-        # Average h2_p1, h2_p2
-        h2_p = (h2_p1 + h2_p2) / 2.0                                    # h2_p : (bs, n, emb)
+        # if self.outputdim == 1:
+        #     return F.sigmoid(self.output(_x))
+        #
+        # else:
+        #     return F.sigmoid(self.output(_x))
 
-        # Treat this as the new "o", and throw in h2 data as well.
-        h2_o = gat1_op_concat.unsqueeze(1).repeat(1, h2_s.shape[1], 1)  # h2_o : (bs, n, num_head*out_dim + emb')
-        h2_o = h2_o * mask2.unsqueeze(-1)                               # h2_o : (bs, n, num_head*out_dim + emb')
-        h2 = torch.cat((h2_s, h2_p, h2_o), dim=-1)                      # h2   : (bs, n, 2*emb + num_head*out_dim + emb')
+        return _x
 
-        # Pass to second graph attn layer
-        hf = self.gat2(h2, mask2)                                       # hf   : (bs, out_dim)
-        self.normalize()
+    def evaluate(self,y_pred,y_true):
+        """
 
-        # Eq. 12 (H'' = W^EH^T + H^F)
-        hf = torch.cat((hf, self.we(o.squeeze(1))), dim=-1)                                # hf   : (bs, out_dim*2)
-
-        return hf
-
-    def _embed_(self, tr, h1, h2):
-        """ The obj is to pass things through entity and rel matrices as needed """
-        # Triple
-        s, p, o = slice_triples(tr, 3)                                  # *    : (bs, 1)
-
-        s = self.entity_embeddings(s).unsqueeze(1)
-        p = self.relation_embeddings(p).unsqueeze(1)
-        o = self.entity_embeddings(o).unsqueeze(1)                      # o    : (bs, 1, emb)
-
-        # Hop1
-        h1_s, h1_p = h1[:, :, 0], h1[:, :, 1]                           # h1_* : (bs, n)
-
-        h1_s = self.entity_embeddings(h1_s)                             # h1_s : (bs, n, emb)
-        h1_p = self.relation_embeddings(h1_p)                           # h1_p : (bs, n, emb)
-
-        # Hop2
-        h2_s, h2_p1, h2_p2 = h2[:, :, 0], h2[:, :, 1], h2[:, :, 2]      # h2_* : (bs, n)
-
-        h2_s = self.entity_embeddings(h2_s)                             # h2_s : (bs, n, emb)
-        h2_p1 = self.relation_embeddings(h2_p1)                         # h2_p1: (bs, n, emb)
-        h2_p2 = self.relation_embeddings(h2_p2)                         # h2_p2: (bs, n, emb)
-
-        return s, p, o, h1_s, h1_p, h2_s, h2_p1, h2_p2
-
-    def _get_relation_embeddings(self, relations):
-        return self.relation_embeddings(relations).view(-1, self.embedding_dim)
+        :param x: bs*nc
+        :param y: bs*nc (nc is number of classes)
+        :return: accuracy (torch tensor)
+        """
+        y_pred, y_true = torch.argmax(y_pred), torch.argmax(y_true)
+        final_score = torch.mean((y_pred==y_true).to(torch.float))
+        return final_score
