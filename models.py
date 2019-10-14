@@ -261,18 +261,17 @@ class TransE(BaseModule):
     def _get_relation_embeddings(self, relations):
         return self.relation_embeddings(relations).view(-1, self.embedding_dim)
 
-    
+
 class ConvKB(BaseModule):
     """
     An implementation of ConvKB.
-    
-    A Novel Embedding Model for Knowledge Base CompletionBased on Convolutional Neural Network. 
+
+    A Novel Embedding Model for Knowledge Base CompletionBased on Convolutional Neural Network.
     """
 
     model_name = 'ConvKB'
 
     def __init__(self, config) -> None:
-
         self.margin_ranking_loss_size_average: bool = True
         self.entity_embedding_max_norm: Optional[int] = None
         self.entity_embedding_norm_type: int = 2
@@ -287,14 +286,16 @@ class ConvKB(BaseModule):
 
         self.config = config
 
-        
-        
-        self.conv = nn.Conv2d(in_channels=1, 
-                              out_channels=config['NUM_FILTER'], kernel_size= (config['MAX_QPAIRS'],1), 
-                             bias=True)
-        
-        self.fc = nn.Linear(config['NUM_FILTER']*self.embedding_dim,1, bias=False)
-        
+        self.criterion = nn.SoftMarginLoss(
+            reduction='sum'
+        )
+
+        self.conv = nn.Conv2d(in_channels=1,
+                              out_channels=config['NUM_FILTER'], kernel_size=(config['MAX_QPAIRS'], 1),
+                              bias=True)
+
+        self.fc = nn.Linear(config['NUM_FILTER'] * self.embedding_dim, 1, bias=False)
+
         self._initialize()
 
         # Make pad index zero. # TODO: Should pad index be configurable? Probably not, right? Cool? Cool.
@@ -321,22 +322,28 @@ class ConvKB(BaseModule):
 
         self.relation_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)
         self.entity_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)  # zeroing the padding index
-        
-        
 
     def predict(self, triples):
         scores = self._score_triples(triples)
         return scores
 
+    def _compute_loss(self, positive_scores: torch.Tensor, negative_scores: torch.Tensor) -> torch.Tensor:
+        # Let n items in pos score.
+        y = np.repeat([-1], repeats=positive_scores.shape[0])  # n item here (all -1)
+        y = torch.tensor(y, dtype=torch.float, device=self.device)
+
+        pos_loss = self.criterion(positive_scores, y)
+        neg_loss = self.criterion(negative_scores, -1 * y)
+        return pos_loss + neg_loss
+
     def forward(self, batch_positives, batch_negatives) \
             -> Tuple[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
-
         # Normalize embeddings of entities
         norms = torch.norm(self.entity_embeddings.weight, p=self.l_p_norm_entities, dim=1).data
-        
+
         self.entity_embeddings.weight.data = self.entity_embeddings.weight.data.div(
             norms.view(self.num_entities, 1).expand_as(self.entity_embeddings.weight))
-        
+
         self.entity_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)  # zeroing the padding index
 
         positive_scores = self._score_triples(batch_positives)
@@ -348,7 +355,6 @@ class ConvKB(BaseModule):
         """ Get triple/quint embeddings, and compute scores """
         scores = self._compute_scores(*self._get_triple_embeddings(triples))
         return scores
-
 
     def _compute_scores(self, head_embeddings, relation_embeddings, tail_embeddings,
                         qual_relation_embeddings=None, qual_entity_embeddings=None):
@@ -362,28 +368,27 @@ class ConvKB(BaseModule):
         :param qual_relation_embeddings: embeddings of qualifier entities of dimension batchsize x embedding_dim
         :return: Tensor of dimension batch_size containing the scores for each batch element
         """
-        
+
         statement_emb = torch.zeros(head_embeddings.shape[0],
-                                    relation_embeddings.shape[1]*2+1,
-                                     head_embeddings.shape[1], 
-                                 device=self.config['DEVICE'],
-                                   dtype=head_embeddings.dtype) # 1 for head embedding
-        
+                                    relation_embeddings.shape[1] * 2 + 1,
+                                    head_embeddings.shape[1],
+                                    device=self.config['DEVICE'],
+                                    dtype=head_embeddings.dtype)  # 1 for head embedding
+
         # Assignment
-        statement_emb[:,0] = head_embeddings
-        statement_emb[:,1::2] = relation_embeddings
-        statement_emb[:,2::2] = tail_embeddings
-        
-        
+        statement_emb[:, 0] = head_embeddings
+        statement_emb[:, 1::2] = relation_embeddings
+        statement_emb[:, 2::2] = tail_embeddings
+
         # Convolutional operation
-        statement_emb = F.relu(self.conv(statement_emb.unsqueeze(1))).squeeze(-1) # bs*number_of_filter*emb_dim            
+        statement_emb = F.relu(self.conv(statement_emb.unsqueeze(1))).squeeze(
+            -1)  # bs*number_of_filter*emb_dim
         statement_emb = statement_emb.view(statement_emb.shape[0], -1)
         score = self.fc(statement_emb)
-        
+
         return score.squeeze()
 
     def _get_triple_embeddings(self, triples):
-        
         head, statement_entities, statement_relations = slice_triples(triples, -1)
         return (
             self._get_entity_embeddings(head),
@@ -393,3 +398,4 @@ class ConvKB(BaseModule):
 
     def _get_relation_embeddings(self, relations):
         return self.relation_embeddings(relations).view(-1, self.embedding_dim)
+

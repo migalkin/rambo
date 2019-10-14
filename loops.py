@@ -223,7 +223,10 @@ def training_loop(epochs: int,
                                              obj=[train_acc, train_loss, train_acc_bnchmk, train_mrr_bnchmk,
                                                   train_hits_3_bnchmk, train_hits_5_bnchmk, train_hits_10_bnchmk,
                                                   valid_acc, valid_mrr, valid_hits_3, valid_hits_5, valid_hits_10])],
-                        json_stuff=[tosave(obj=save_content['config'], fname='config.json')])
+                        json_stuff=[tosave(
+                            obj={k: v for k, v in save_content['config'].items() if    # Ignoring non serializable stuff
+                                 type(v) in [str, bool, int, float, list, tuple, set]},
+                            fname='config.json')])
         else:
             # No test benches this time around
             print("Epoch: %(epo)03d | Loss: %(loss).5f | Tr_c: %(tracc)0.5f | "
