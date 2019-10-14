@@ -7,6 +7,10 @@ from functools import partial
 
 from utils import *
 
+KNOWN_DATASETS = ['fb15k237', 'wd15k', 'fb15k', 'wikipeople', 'wd15k_qonly']
+RAW_DATA_DIR = Path('./data/raw_data')
+PARSED_DATA_DIR = Path('./data/parsed_data')
+PRETRAINING_DATA_DIR = Path('./data/pre_training_data')
 
 def _conv_to_our_format_(data):
     conv_data = []
