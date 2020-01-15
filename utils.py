@@ -44,12 +44,13 @@ def masked_softmax(x, m=None, dim=-1):
     return softmax
 
 
-def create_neighbourhood_hashes(data: Dict) -> (Dict,Dict):
+def create_neighbourhood_hashes(data: Dict) -> (Dict, Dict):
+    # @TODO: did we test it already
 
     print("Creating hop1 hash.")
     hop1 = {}
 
-    for s, p, o in data['train']: #+ data['valid'] + data['test']:
+    for s, p, o in data['train']:       # + data['valid'] + data['test']:
         hop1.setdefault(o, []).append((s, p))
         hop1[o] = list(set(hop1[o]))
 

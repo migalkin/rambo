@@ -149,7 +149,8 @@ class NeighbourhoodSampler(SimpleSampler):
             hop2.append(self.hop2.get(e, [0, 0, 0]))       # Hop2 is list of list of tuples
 
         if [] in hop1 or [] in hop2:
-            print('shit')
+            # @TODO: don't just shit. do something. Does the code below work with empty lists/matrices?
+            raise NotImplementedError
 
         # Pad Stuff
         _pad = (0, 0)

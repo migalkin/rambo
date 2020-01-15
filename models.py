@@ -168,7 +168,6 @@ class TransE(BaseModule):
     def _self_attention_2d(self, head_embeddings, relation_embeddings, tail_embeddings, scale=False):
         """ Simple self attention """
         # @TODO: Add scaling factor
-        # @TODO: Add masking.
 
         triple_vector = head_embeddings + relation_embeddings[:, 0, :] - tail_embeddings[:, 0, :]
         qualifier_vectors = relation_embeddings[:, 1:, :] - tail_embeddings[:, 1:, :]
@@ -441,7 +440,8 @@ class GraphAttentionLayerMultiHead(nn.Module):
         if self.final:
             h = torch.mean(h, dim=-1)                       # h: bs, out_features
         else:
-            h = F.elu(h.view(bs, -1))                       # h: bs, out_features*num_heads
+            # Their implementation uses ELU instead of RELU :/
+            h = F.elu(h).view(bs, -1)                       # h: bs, out_features*num_heads
 
         return h
 
@@ -524,8 +524,8 @@ class KBGat(BaseModule):
 
     def forward(self, pos: List, neg: List) -> (tuple, torch.Tensor):
         """
-            triples of size: (bs, 3)
-               hop1 of size: (bs, n, 2) (s and r)
+            triples of size: (bs, 3)    (s and r1 and  o)
+               hop1 of size: (bs, n, 2) (s and r1)
                hop2 of size: (bs, n, 3) (s and r1 and r2)
 
             (here n -> num_neighbors)
@@ -587,6 +587,7 @@ class KBGat(BaseModule):
         """
 
         # Compute Masks
+        # @TODO: Verify. Maybe we should mask o and not s.
         mask1 = compute_mask(h1_s)[:, :, 0]                             # m1   : (bs, n)
         mask2 = compute_mask(h2_s)[:, :, 0]                             # m2   : (bs, n)
 
@@ -616,6 +617,7 @@ class KBGat(BaseModule):
         self.normalize()
 
         # Eq. 12 (H'' = W^EH^T + H^F)
+        # @TODO: Should we add or concat?
         hf = torch.cat((hf, self.we(o.squeeze(1))), dim=-1)                                # hf   : (bs, out_dim*2)
 
         return hf
