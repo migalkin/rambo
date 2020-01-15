@@ -88,7 +88,7 @@ class EvaluationBench:
             Calling this iterates through different data points, generates negatives, passes them to the model,
                 collects the scores, computes the metrics, and reports them.
 
-            Update: run function now actually goes over only ?? @todo
+            Update: run functino now actually goes over only
         """
         metrics = []
 
@@ -144,6 +144,8 @@ class EvaluationBenchArity(EvaluationBench):
     """
         Sampler like evaluationbench but with expressions of different arity grouped together
     """
+
+
     @staticmethod
     def summarize_run(summary: dict):
         """ Nicely print what just went down """
