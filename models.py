@@ -319,7 +319,6 @@ class ConvKB(BaseModule):
         self.relation_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)
         self.entity_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)  # zeroing the padding index
         
-        
 
     def predict(self, triples):
         scores = self._score_triples(triples)
@@ -371,7 +370,6 @@ class ConvKB(BaseModule):
         statement_emb[:,1::2] = relation_embeddings
         statement_emb[:,2::2] = tail_embeddings
         
-        
         # Convolutional operation
         statement_emb = F.relu(self.conv(statement_emb.unsqueeze(1))).squeeze(-1) # bs*number_of_filter*emb_dim            
         statement_emb = statement_emb.view(statement_emb.shape[0], -1)
@@ -392,9 +390,6 @@ class ConvKB(BaseModule):
         return self.relation_embeddings(relations).view(-1, self.embedding_dim)
 
 
-
-
-
 class DenseClf(nn.Module):
 
     def __init__(self, inputdim, hiddendim, outputdim):
@@ -411,7 +406,75 @@ class DenseClf(nn.Module):
         :param hiddendim: int: #neurons
         :param outputdim: int: #neurons
         """
-<<<<<<< HEAD
+
+        super(DenseClf, self).__init__()
+
+        self.inputdim = int(inputdim)
+        self.hiddendim = int(hiddendim)
+        self.outputdim = int(outputdim)
+        self.hidden = nn.Linear(self.inputdim, self.outputdim)
+        # self.output = nn.Linear(self.hiddendim, self.outputdim)
+
+    def forward(self, x):
+        """
+        :param x: bs*sl
+        :return:
+        """
+        _x = F.sigmoid(self.hidden(x))
+
+        # if self.outputdim == 1:
+        #     return F.sigmoid(self.output(_x))
+        #
+        # else:
+        #     return F.sigmoid(self.output(_x))
+
+        return _x
+
+    def evaluate(self,y_pred,y_true):
+        """
+        :param x: bs*nc
+        :param y: bs*nc (nc is number of classes)
+        :return: accuracy (torch tensor)
+        """
+        y_pred, y_true = torch.argmax(y_pred), torch.argmax(y_true)
+        final_score = torch.mean((y_pred==y_true).to(torch.float))
+        return final_score
+
+
+class GraphAttentionLayerMultiHead(nn.Module):
+
+    def __init__(self, config: dict, residual_dim: int = 0, final_layer: bool = False):
+
+        super().__init__()
+
+        # Parse params
+        ent_emb_dim, rel_emb_dim = config['EMBEDDING_DIM'], config['EMBEDDING_DIM']
+        out_features = config['KBGATARGS']['OUT']
+        num_head = config['KBGATARGS']['HEAD']
+        alpha_leaky = config['KBGATARGS']['ALPHA']
+
+        self.w1 = nn.Linear(2 * ent_emb_dim + rel_emb_dim + residual_dim, out_features)
+        self.w2 = nn.Linear(out_features, num_head)
+        self.relu = nn.LeakyReLU(alpha_leaky)
+
+        self.final = final_layer
+
+        # Why copy un-necessary stuff
+        self.heads = num_head
+
+        # Not initializing here. Should be called by main module
+
+    def initialize(self):
+        nn.init.xavier_normal_(self.w1.weight.data, gain=1.414)
+        nn.init.xavier_normal_(self.w2.weight.data, gain=1.414)
+
+    def forward(self, data: torch.Tensor, mask: torch.Tensor = None):
+        """
+            data: size (batchsize, num_neighbors, 2*ent_emb+rel_emb) or (bs, n, emb)
+            mask: size (batchsize, num_neighbors)
+
+            PS: num_neighbors is padded either with max neighbors or with a limit
+        """
         # data: bs, n, emb
         bs, _, _ = data.shape
 
@@ -492,47 +555,54 @@ class KBGat(BaseModule):
 
         # Also init the GATs with bacteria and tapeworms
         self.gat1.initialize(), self.gat2.initialize()
-=======
->>>>>>> b2fbe87686919f302c59326826cdbeff1a04342e
 
-        super(DenseClf, self).__init__()
+    def predict(self, triples_hops) -> torch.Tensor:
+        scores = self._score_triples_(triples_hops)
+        return scores
 
-        self.inputdim = int(inputdim)
-        self.hiddendim = int(hiddendim)
-        self.outputdim = int(outputdim)
-        self.hidden = nn.Linear(self.inputdim, self.outputdim)
-        # self.output = nn.Linear(self.hiddendim, self.outputdim)
+    def normalize(self) -> None:
 
-    def forward(self, x):
+        # Normalize embeddings of entities
+        norms = torch.norm(self.entity_embeddings.weight, p=self.l_p_norm_entities, dim=1).data
+
+        self.entity_embeddings.weight.data = self.entity_embeddings.weight.data.div(
+            norms.view(self.num_entities, 1).expand_as(self.entity_embeddings.weight))
+
+        # zeroing the padding index
+        self.entity_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)
+
+    def forward(self, pos: List, neg: List) -> (tuple, torch.Tensor):
         """
-<<<<<<< HEAD
             triples of size: (bs, 3)    (s and r1 and  o)
                hop1 of size: (bs, n, 2) (s and r1)
                hop2 of size: (bs, n, 3) (s and r1 and r2)
-=======
->>>>>>> b2fbe87686919f302c59326826cdbeff1a04342e
-
-        :param x: bs*sl
-        :return:
+            (here n -> num_neighbors)
+            (here hop2 has for bc it is <s r1 r2 o> )
+            (pos has pos_triples, pos_hop1, pos_hop2. neg has same.)
         """
-        _x = F.sigmoid(self.hidden(x))
+        pos_triples, pos_hop1, pos_hop2 = pos
+        neg_triples, neg_hop1, neg_hop2 = neg
 
-        # if self.outputdim == 1:
-        #     return F.sigmoid(self.output(_x))
-        #
-        # else:
-        #     return F.sigmoid(self.output(_x))
+        self.normalize()
 
-        return _x
+        positive_scores = self._score_triples_(pos_triples, pos_hop1, pos_hop2)
+        negative_scores = self._score_triples_(neg_triples, neg_hop1, neg_hop2)
 
-    def evaluate(self,y_pred,y_true):
+        loss = self._compute_loss(positive_scores=positive_scores, negative_scores=negative_scores)
+        return (positive_scores, negative_scores), loss
+
+    def _score_triples_(self,
+                        triples: torch.Tensor,
+                        hop1: torch.Tensor,
+                        hop2: torch.Tensor) -> torch.Tensor:
         """
-
-        :param x: bs*nc
-        :param y: bs*nc (nc is number of classes)
-        :return: accuracy (torch tensor)
+            triples of size: (bs, 3)
+            hop1 of size: (bs, n, 2) (s, p) (o is same as that of triples)
+            hop2 of size: (bs, n, 3) (s, p1, p2) (o is same as that of triples)
+            1. Embed all things so triples (bs, 3, emb), hop1 (bs, n, 3, emb), hop2 (bs, n, 4, emb)
+            2. Concat hop1, hop2 to be (bs, n, 3*emb) and (bs, n, 4*emb) each
+            3. Pass the baton to some other function.
         """
-<<<<<<< HEAD
         s, p, o, h1_s, h1_p, h2_s, h2_p1, h2_p2 = self._embed_(triples, hop1, hop2)
 
         hf = self._score_o_(s, p, o, h1_s, h1_p, h2_s, h2_p1, h2_p2)
@@ -624,8 +694,3 @@ class KBGat(BaseModule):
 
     def _get_relation_embeddings(self, relations):
         return self.relation_embeddings(relations).view(-1, self.embedding_dim)
-=======
-        y_pred, y_true = torch.argmax(y_pred), torch.argmax(y_true)
-        final_score = torch.mean((y_pred==y_true).to(torch.float))
-        return final_score
->>>>>>> b2fbe87686919f302c59326826cdbeff1a04342e
