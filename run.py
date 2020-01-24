@@ -1,8 +1,9 @@
 """
     The file which actually manages to run everything
+
+    TODO: How do we init a model with another model?
 """
 import os
-
 os.environ['MKL_NUM_THREADS'] = '1'
 
 from functools import partial
@@ -18,10 +19,10 @@ from parse_wd15k import Quint
 from load import DataManager
 from utils import *
 from evaluation import EvaluationBench, EvaluationBenchArity, acc, mrr, mr, hits_at, evaluate_pointwise
-from models import TransE, ConvKB
+from models import TransE, ConvKB, KBGat
 from corruption import Corruption
-from sampler import SimpleSampler
-from loops import training_loop
+from sampler import SimpleSampler, NeighbourhoodSampler
+from loops import training_loop, training_loop_neighborhood
 
 """
     CONFIG Things
@@ -32,6 +33,8 @@ np.random.seed(42)
 random.seed(42)
 
 """
+    @TODO: Add detailed explanations for these.
+    @TODO: Shall we also make recepies here?
     Explanation:
         *ENT_POS_FILTERED* 
             a flag which if False, implies that while making negatives, 
@@ -47,33 +50,42 @@ random.seed(42)
             Anything else, no self attention is used.
 """
 DEFAULT_CONFIG = {
+    'BATCH_SIZE': 512,
+    'CORRUPTION_POSITIONS': [0, 2],
+    'DATASET': 'wd15k',
+    'DEVICE': 'cpu',
     'EMBEDDING_DIM': 50,
-    'NORM_FOR_NORMALIZATION_OF_ENTITIES': 2,
-    'NORM_FOR_NORMALIZATION_OF_RELATIONS': 2,
-    'SCORING_FUNCTION_NORM': 1,
-    'MARGIN_LOSS': 5,
+    'ENT_POS_FILTERED': True,
+    'EPOCHS': 1000,
+    'EVAL_EVERY': 20,
     'LEARNING_RATE': 0.001,
+    'MARGIN_LOSS': 5,
+    'MAX_QPAIRS': 43,
+    'MODEL_NAME': 'ConvKB',
+    'NARY_EVAL': False,
     'NEGATIVE_SAMPLING_PROBS': [0.3, 0.0, 0.2, 0.5],
     'NEGATIVE_SAMPLING_TIMES': 10,
-    'BATCH_SIZE': 512,
-    'EPOCHS': 1000,
-    'STATEMENT_LEN': 3,
-    'EVAL_EVERY': 20,
-    'WANDB': False,
-    'RUN_TESTBENCH_ON_TRAIN': True,
-    'DATASET': 'wd15k',
-    'CORRUPTION_POSITIONS': [0, 2],
-    'DEVICE': 'cpu',
-    'ENT_POS_FILTERED': True,
-    'USE_TEST': False,
-    'MAX_QPAIRS': 3,
-    'NARY_EVAL': False,
-    'SELF_ATTENTION': 0,
-    'PROJECT_QUALIFIERS': False,
+    'NORM_FOR_NORMALIZATION_OF_ENTITIES': 2,
+    'NORM_FOR_NORMALIZATION_OF_RELATIONS': 2,
     'NUM_FILTER': 5,
-    'MODEL_NAME': 'ConvKB',
-    'SAVE': False
+    'PROJECT_QUALIFIERS': False,
+    'PRETRAINED_DIRNUM': '',
+    'RUN_TESTBENCH_ON_TRAIN': True,
+    'SAVE': False,
+    'SELF_ATTENTION': 0,
+    'SCORING_FUNCTION_NORM': 1,
+    'STATEMENT_LEN': -1,
+    'USE_TEST': False,
+    'WANDB': False
 }
+
+KBGATARGS = {
+    'OUT': 25,
+    'HEAD': 3,
+    'ALPHA': 0.5
+}
+
+DEFAULT_CONFIG['KBGATARGS'] = KBGATARGS
 
 if __name__ == "__main__":
 
@@ -107,11 +119,21 @@ if __name__ == "__main__":
         Load data based on the args/config
     """
     data = DataManager.load(config=DEFAULT_CONFIG)()
+
+    # Break down the data
     try:
         training_triples, valid_triples, test_triples, num_entities, num_relations, _, _ = data.values()
     except ValueError:
         raise ValueError(f"Honey I broke the loader for {DEFAULT_CONFIG['DATASET']}")
 
+    # KBGat Specific hashes (to compute neighborhood)
+    if DEFAULT_CONFIG['MODEL_NAME'].lower() == 'kbgat':
+        assert DEFAULT_CONFIG['DATASET'] == 'fb15k237'
+        hashes = create_neighbourhood_hashes(data)
+    else:
+        hashes = None
+
+    # Exclude entities which don't appear in the dataset. E.g. entity nr. 455 may never appear.
     if DEFAULT_CONFIG['ENT_POS_FILTERED']:
         ent_excluded_from_corr = DataManager.gather_missing_entities(
             data=training_triples + valid_triples + test_triples,
@@ -132,11 +154,18 @@ if __name__ == "__main__":
     """
     config = DEFAULT_CONFIG.copy()
     config['DEVICE'] = torch.device(config['DEVICE'])
-    
+
     if config['MODEL_NAME'].lower() == 'transe':
         model = TransE(config)
     elif config['MODEL_NAME'].lower() == 'convkb':
         model = ConvKB(config)
+    elif config['MODEL_NAME'].lower() == 'kbgat':
+        if config['PRETRAINED_DIRNUM'] != '': #@TODO: how do we pull the models
+            pretrained_models = ...
+            raise NotImplementedError
+        else:
+            pretrained_models = None
+        model = KBGat(config, pretrained_models)
     else:
         raise AssertionError('Unknown Model Name')
 
@@ -163,24 +192,18 @@ if __name__ == "__main__":
     eval_metrics = [acc, mrr, mr, partial(hits_at, k=3), partial(hits_at, k=5), partial(hits_at, k=10)]
 
     if not config['NARY_EVAL']:
-        evaluation_valid = EvaluationBench(data, model, bs=8000,
-                                           metrics=eval_metrics, filtered=True,
-                                           n_ents=num_entities,
-                                           excluding_entities=ent_excluded_from_corr,
+        evaluation_valid = EvaluationBench(data, model, bs=8000, metrics=eval_metrics, filtered=True,
+                                           n_ents=num_entities, excluding_entities=ent_excluded_from_corr,
                                            positions=config.get('CORRUPTION_POSITIONS', None))
-        evaluation_train = EvaluationBench(_data, model, bs=8000,
-                                           metrics=eval_metrics, filtered=True,
-                                           n_ents=num_entities,
-                                           excluding_entities=ent_excluded_from_corr,
+        evaluation_train = EvaluationBench(_data, model, bs=8000, metrics=eval_metrics, filtered=True,
+                                           n_ents=num_entities, excluding_entities=ent_excluded_from_corr,
                                            positions=config.get('CORRUPTION_POSITIONS', None), trim=0.01)
     else:
-        evaluation_valid = EvaluationBenchArity(data, model, bs=8000,
-                                                metrics=eval_metrics, filtered=True,
-                                                n_ents=num_entities,
+        evaluation_valid = EvaluationBenchArity(data, model, bs=8000, metrics=eval_metrics,
+                                                filtered=True, n_ents=num_entities,
                                                 excluding_entities=ent_excluded_from_corr)
-        evaluation_train = EvaluationBenchArity(_data, model, bs=8000,
-                                                metrics=eval_metrics, filtered=True,
-                                                n_ents=num_entities,
+        evaluation_train = EvaluationBenchArity(_data, model, bs=8000, metrics=eval_metrics,
+                                                filtered=True, n_ents=num_entities,
                                                 excluding_entities=ent_excluded_from_corr, trim=0.01)
 
     # Saving stuff
@@ -191,7 +214,6 @@ if __name__ == "__main__":
         save_content = {'model': model, 'config': config}
     else:
         savedir, save_content = None, None
-
 
     args = {
         "epochs": config['EPOCHS'],
@@ -211,6 +233,14 @@ if __name__ == "__main__":
         "savedir": savedir,
         "save_content": save_content
     }
+
+    if config['MODEL_NAME'] == 'kbgat':
+        # Change the data fn
+        neg_generator = args.pop('neg_generator')
+        args['data_fn'] = partial(NeighbourhoodSampler, bs=config["BATCH_SIZE"], corruptor=neg_generator,
+                                  hashes=hashes)
+
+        training_loop = training_loop_neighborhood
 
     traces = training_loop(**args)
 

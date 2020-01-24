@@ -1,13 +1,14 @@
 from utils import *
-
+from corruption import Corruption
 
 class SimpleSampler:
     """
         Simply iterate over X
     """
+
     def __init__(self, data: Union[np.array, list], bs: int = 64):
         self.bs = bs
-        self.data = np.array(data) # pos data only motherfucker
+        self.data = np.array(data)  # pos data only motherfucker
 
         self.shuffle()
 
@@ -111,10 +112,61 @@ class QuintRankingSampler:
         return _pos, _neg
 
 
+class NeighbourhoodSampler(SimpleSampler):
+    def __init__(self, data: Union[np.array, list], corruptor: Corruption, bs: int = 64, hashes=None):
+        super().__init__(data, bs)
+        self.corruptor = corruptor
+        self.hop1, self.hop2 = hashes if hashes is not None else [{}, {}]
+
+    def __next__(self):
+        """
+            Each time, take `bs` pos, get neg, get hops for both pos and neg...
+        """
+
+        _pos = super().__next__()
+        _neg = self.corruptor.corrupt_batch(_pos)
+
+        _pos_objs = _pos[:, 2]  # all Pos (bs)
+        _neg_objs = _neg[:, 2]  # all Neg (bs)
+
+        _pos_hop1, _pos_hop2 = self._get_neighborhoods_(_pos_objs)
+        _neg_hop1, _neg_hop2 = self._get_neighborhoods_(_neg_objs)
+
+        return _pos, _pos_hop1, _pos_hop2, _neg, _neg_hop1, _neg_hop2
+
+    def _get_neighborhoods_(self, objs: list) -> (np.ndarray, np.ndarray):
+        """
+            Pull hop1, hop2 from self.hop*, and then pad and return
+
+        :param objs: list of objects
+        :return: (nparr hop1, nparr hop2)
+        """
+
+        # First and second neighbourhood
+        hop1, hop2 = [], []
+        for e in objs:
+            hop1.append(self.hop1.get(e, [0, 0]))       # Hop1 is list of list of tuples
+            hop2.append(self.hop2.get(e, [0, 0, 0]))       # Hop2 is list of list of tuples
+
+        if [] in hop1 or [] in hop2:
+            return np.array([]), np.array([])
+
+        # Pad Stuff
+        _pad = (0, 0)
+        max1, max2 = max(len(neighbors) for neighbors in hop1), max(len(neighbors) for neighbors in hop2)
+        _hop1, _hop2 = np.zeros((self.bs, max1, 2)), np.zeros((self.bs, max2, 3))
+        for i, datum in enumerate(hop1):
+            _hop1[i, :len(datum)] = datum
+        for i, datum in enumerate(hop2):
+            _hop2[i, :len(datum)] = datum
+
+        return _hop1, _hop2
+
+
 class SingleSampler:
     """
         Another sampler which gives correct + all corrupted things for one triple
-        [NOTE]: Depriciated
+        [NOTE]: Depreciated
     """
 
     def __init__(self, data: dict, bs: int, n_items: int = 5):

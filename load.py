@@ -898,7 +898,6 @@ def load_wd15k_qonly_66_triples() -> Dict:
             "num_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
-
 def load_wikipeople_quints():
     # Load data from disk
     DIRNAME = Path('./data/raw_data/wikipeople')
@@ -1088,7 +1087,7 @@ def load_fb15k237() -> Dict:
             open(RAW_DATA_DIR / "test2id.txt", "r") as test_file:
         num_entities = int(next(ent_file).strip("\n")) + 1          # One more for padding/unk
         num_relations = int(next(rel_file).strip("\n")) + 1         # One more for padding/unk
-        num_trains = int(next(train_file).strip("\n"))
+
         for line in train_file:
             triple = line.strip("\n").split(" ")
             training_triples.append([int(triple[0])+1, int(triple[2])+1, int(triple[1])+1])
@@ -1248,6 +1247,7 @@ if __name__ == "__main__":
     # ds3 = load_wd15k_qonly_quints()
     # ds4 = load_wd15k_qonly_triples()
     # print(len(ds4))
+
 
     ds = load_wd15k_66_statements(maxlen=43)
     tr = ds['train']
