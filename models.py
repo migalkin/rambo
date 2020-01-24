@@ -616,9 +616,9 @@ class KBGat(BaseModule):
         """
             Expected embedded tensors: following
 
-            s:  (bs, emb)
-            p:  (bs, emb)
-            o:  (bs, emb)
+            s: (bs, emb)
+            p: (bs, emb)
+            o: (bs, emb)
             h1_s: (bs, n, emb)
             h1_p: (bs, n, emb)
             h2_s: (bs, n, emb)
@@ -633,7 +633,6 @@ class KBGat(BaseModule):
         """
 
         # Compute Masks
-        # @TODO: Verify. Maybe we should mask o and not s.
         mask1 = compute_mask(h1_s)[:, :, 0]                             # m1   : (bs, n)
         mask2 = compute_mask(h2_s)[:, :, 0]                             # m2   : (bs, n)
 
@@ -664,7 +663,8 @@ class KBGat(BaseModule):
 
         # Eq. 12 (H'' = W^EH^T + H^F)
         # @TODO: Should we add or concat?
-        hf = torch.cat((hf, self.we(o.squeeze(1))), dim=-1)                                # hf   : (bs, out_dim*2)
+        hf = hf + self.we(o.squeeze(1))                                 # hf   : (bs, out_dim)
+        # hf = torch.cat((hf, self.we(o.squeeze(1))), dim=-1)           # hf   : (bs, out_dim*2)
 
         return hf
 
