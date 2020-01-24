@@ -1072,6 +1072,7 @@ def load_wikipeople_statements(maxlen=17) -> Dict:
 def load_fb15k237() -> Dict:
     """
         TODO: Shift all entities w 1. ZERO MUST BE PAD
+        TODO: Return ID dicts?
     :return:
     """
     RAW_DATA_DIR = Path('./data/raw_data/fb15k237')
@@ -1109,6 +1110,7 @@ def load_fb15k237() -> Dict:
 def load_fb15k() -> Dict:
     """
             TODO: Shift all entities w 1. ZERO MUST BE PAD
+            TODO: Return ID dicts?
         :return:
         """
     RAW_DATA_DIR = Path('./data/raw_data/fb15k')
@@ -1152,6 +1154,55 @@ def load_dummy_dataset():
     num_entities = 200
     num_relations = 20
     ds = [[]]
+
+
+def get_graph_repr(train: List[List[int]], valid: List[List[int]], test: List[List[int]],
+                   ne: int, nr: int, config):
+    """
+        for each of train, test, valid split
+            for each triple,
+                s, o -> edge_index
+                r -> edge_type
+                r_q1,... -> list of column vectors (np.arrs)
+                e_q1,... -> list of column vectors (np.arrs)
+            endfor
+        endfor
+
+        for each of train, valid and test split
+            create reverse relations in the existing stuff.
+
+        :param train: [[s, p, o, qr1, qe1, qr2, qe3...], ..., [...]] (already have a max length
+        :param valid: [[s, p, o, qr1, qe1, qr2, qe3...], ..., [...]] (already have a max length
+        :param test: [[s, p, o, qr1, qe1, qr2, qe3...], ..., [...]] (already have a max length
+        :param ne: number of entities in the KG
+        :param nr: number of relations in the KG
+        :param dict: the config dict
+    """
+    # Init necessary stuff
+    train_edge_index, train_edge_type = np.zeros(2, len(train)), np.zeros(len(train))
+    valid_edge_index, valid_edge_type = np.zeros(2, len(valid)), np.zeros(len(valid))
+    test_edge_index, test_edge_type = np.zeros(2, len(test)), np.zeros(len(test))
+
+    # @TODO: if config flags say so, skip the qualifier stuff
+    if True:
+        # Init Qualifier stuff
+        train_qual_rel, train_qual_ent = np.zeros(len(train[0])-3, len(train))
+        valid_qual_rel, valid_qual_ent = np.zeros(len(valid[0])-3, len(valid))
+        test_qual_rel, test_qual_ent = np.zeros(len(test[0])-3, len(test))
+
+    # Train
+    for i, triple in enumerate(train):
+        train_edge_index[:, i] = [train[i][0], train[i][2]]
+        train_edge_type[i] = train[i][1]
+
+        # @TODO: add qualifiers
+
+    # @TODO: do inverses
+
+
+
+
+
 
 
 class DataManager(object):
