@@ -18,7 +18,8 @@ from mytorch.utils.goodies import *
 from parse_wd15k import Quint
 from load import DataManager
 from utils import *
-from evaluation import EvaluationBench, EvaluationBenchArity, acc, mrr, mr, hits_at, evaluate_pointwise
+from evaluation import EvaluationBench, EvaluationBenchArity, evaluate_pointwise
+from evaluation import  acc, mrr, mr, hits_at
 from models import TransE, ConvKB, KBGat
 from corruption import Corruption
 from sampler import SimpleSampler, NeighbourhoodSampler
@@ -33,8 +34,9 @@ np.random.seed(42)
 random.seed(42)
 
 """
-    @TODO: Add detailed explanations for these.
-    @TODO: Shall we also make recepies here?
+    TODO: Add detailed explanations for these.
+    TODO: Shall we also make recipes here?
+    
     Explanation:
         *ENT_POS_FILTERED* 
             a flag which if False, implies that while making negatives, 
@@ -106,23 +108,23 @@ if __name__ == "__main__":
             else:
                 DEFAULT_CONFIG[k.upper()] = v
 
-    # Custom Sanity Checks
-    if DEFAULT_CONFIG['DATASET'] == 'wd15k':
-        assert DEFAULT_CONFIG['STATEMENT_LEN'] is not None, \
-            "You use WD15k dataset and don't specify whether to treat them as quints or not. Nicht cool'"
-    if max(DEFAULT_CONFIG['CORRUPTION_POSITIONS']) > 2:  # If we're corrupting something apart from S and O
+    """
+        Custom Sanity Checks
+    """
+    # If we're corrupting something apart from S and O
+    if max(DEFAULT_CONFIG['CORRUPTION_POSITIONS']) > 2:
         assert DEFAULT_CONFIG['ENT_POS_FILTERED'] is False, \
             f"Since we're corrupting objects at pos. {DEFAULT_CONFIG['CORRUPTION_POSITIONS']}, " \
-                f"You must allow including entities which appear exclusively in qualifiers, too!"
+            f"You must allow including entities which appear exclusively in qualifiers, too!"
 
     """
-        Load data based on the args/config
+        Loading and preparing data
     """
     data = DataManager.load(config=DEFAULT_CONFIG)()
 
     # Break down the data
     try:
-        training_triples, valid_triples, test_triples, num_entities, num_relations, _, _ = data.values()
+        train_triples, valid_triples, test_triples, n_entities, n_relations, _, _ = data.values()
     except ValueError:
         raise ValueError(f"Honey I broke the loader for {DEFAULT_CONFIG['DATASET']}")
 
@@ -136,18 +138,20 @@ if __name__ == "__main__":
     # Exclude entities which don't appear in the dataset. E.g. entity nr. 455 may never appear.
     if DEFAULT_CONFIG['ENT_POS_FILTERED']:
         ent_excluded_from_corr = DataManager.gather_missing_entities(
-            data=training_triples + valid_triples + test_triples,
+            data=train_triples + valid_triples + test_triples,
             positions=DEFAULT_CONFIG['CORRUPTION_POSITIONS'],
-            n_ents=num_entities)
-        DEFAULT_CONFIG['NUM_ENTITIES_FILTERED'] = len(ent_excluded_from_corr)
+            n_ents=n_entities)
     else:
         ent_excluded_from_corr = [0]
-        DEFAULT_CONFIG['NUM_ENTITIES_FILTERED'] = len(ent_excluded_from_corr)
 
-    print(f"Training on {num_entities} entities")
-    print(f"Evaluating on {num_entities - DEFAULT_CONFIG['NUM_ENTITIES_FILTERED']} entities")
-    DEFAULT_CONFIG['NUM_ENTITIES'] = num_entities
-    DEFAULT_CONFIG['NUM_RELATIONS'] = num_relations
+    # CompGCN Specific data pre processing
+    if DEFAULT_CONFIG['MODEL_NAME'].lower() == 'compgcn':
+        ...
+
+    print(f"Training on {n_entities} entities")
+    print(f"Evaluating on {n_entities - len(ent_excluded_from_corr)} entities")
+    DEFAULT_CONFIG['NUM_ENTITIES'] = n_entities
+    DEFAULT_CONFIG['NUM_RELATIONS'] = n_relations
 
     """
         Make ze model
@@ -160,12 +164,14 @@ if __name__ == "__main__":
     elif config['MODEL_NAME'].lower() == 'convkb':
         model = ConvKB(config)
     elif config['MODEL_NAME'].lower() == 'kbgat':
-        if config['PRETRAINED_DIRNUM'] != '': #@TODO: how do we pull the models
+        if config['PRETRAINED_DIRNUM'] != '':   # @TODO: how do we pull the models
             pretrained_models = ...
             raise NotImplementedError
         else:
             pretrained_models = None
         model = KBGat(config, pretrained_models)
+    elif config['MODEL_NAME'].lower() == 'compgcn':
+        ...
     else:
         raise AssertionError('Unknown Model Name')
 
@@ -179,32 +185,46 @@ if __name__ == "__main__":
 
     """
         Prepare test benches
+        TODO: Refactor this. This is ugly code.
     """
     if config['USE_TEST']:
-        data = {'index': np.array(training_triples + valid_triples), 'eval': np.array(test_triples)}
-        _data = {'index': np.array(valid_triples + test_triples), 'eval': np.array(training_triples)}
-        tr_data = {'train': np.array(training_triples + valid_triples), 'valid': data['eval']}
+        ev_vl_data = {'index': np.concatenate((train_triples, valid_triples)),
+                      'eval': np.array(test_triples)}
+        ev_tr_data = {'index': np.concatenate((valid_triples, test_triples)),
+                      'eval': np.array(train_triples)}
+        tr_data = {'train': np.concatenate((train_triples, valid_triples)),
+                   'valid': ev_vl_data['eval']}
     else:
-        data = {'index': np.array(training_triples + test_triples), 'eval': np.array(valid_triples)}
-        _data = {'index': np.array(valid_triples + test_triples), 'eval': np.array(training_triples)}
-        tr_data = {'train': np.array(training_triples), 'valid': data['eval']}
+        ev_vl_data = {'index': np.concatenate((train_triples, test_triples)),
+                      'eval': np.array(valid_triples)}
+        ev_tr_data = {'index': np.concatenate((valid_triples, test_triples)),
+                      'eval': np.array(train_triples)}
+        tr_data = {'train': np.array(train_triples), 'valid': ev_vl_data['eval']}
 
-    eval_metrics = [acc, mrr, mr, partial(hits_at, k=3), partial(hits_at, k=5), partial(hits_at, k=10)]
+    # if config['MODEL_NAME'].lower() == 'compgcn':
+    #   TODO: DO something.
+
+    eval_metrics = [acc, mrr, mr, partial(hits_at, k=3),
+                    partial(hits_at, k=5), partial(hits_at, k=10)]
 
     if not config['NARY_EVAL']:
-        evaluation_valid = EvaluationBench(data, model, bs=8000, metrics=eval_metrics, filtered=True,
-                                           n_ents=num_entities, excluding_entities=ent_excluded_from_corr,
+        evaluation_valid = EvaluationBench(ev_vl_data, model, bs=8000, metrics=eval_metrics,
+                                           filtered=True, n_ents=n_entities,
+                                           excluding_entities=ent_excluded_from_corr,
                                            positions=config.get('CORRUPTION_POSITIONS', None))
-        evaluation_train = EvaluationBench(_data, model, bs=8000, metrics=eval_metrics, filtered=True,
-                                           n_ents=num_entities, excluding_entities=ent_excluded_from_corr,
-                                           positions=config.get('CORRUPTION_POSITIONS', None), trim=0.01)
+        evaluation_train = EvaluationBench(ev_tr_data, model, bs=8000, metrics=eval_metrics,
+                                           filtered=True, n_ents=n_entities,
+                                           excluding_entities=ent_excluded_from_corr,
+                                           positions=config.get('CORRUPTION_POSITIONS', None),
+                                           trim=0.01)
     else:
-        evaluation_valid = EvaluationBenchArity(data, model, bs=8000, metrics=eval_metrics,
-                                                filtered=True, n_ents=num_entities,
+        evaluation_valid = EvaluationBenchArity(ev_vl_data, model, bs=8000, metrics=eval_metrics,
+                                                filtered=True, n_ents=n_entities,
                                                 excluding_entities=ent_excluded_from_corr)
-        evaluation_train = EvaluationBenchArity(_data, model, bs=8000, metrics=eval_metrics,
-                                                filtered=True, n_ents=num_entities,
-                                                excluding_entities=ent_excluded_from_corr, trim=0.01)
+        evaluation_train = EvaluationBenchArity(ev_tr_data, model, bs=8000, metrics=eval_metrics,
+                                                filtered=True, n_ents=n_entities,
+                                                excluding_entities=ent_excluded_from_corr,
+                                                trim=0.01)
 
     # Saving stuff
     if config['SAVE']:
@@ -220,7 +240,7 @@ if __name__ == "__main__":
         "data": tr_data,
         "opt": optimizer,
         "train_fn": model,
-        "neg_generator": Corruption(n=num_entities, excluding=[0],
+        "neg_generator": Corruption(n=n_entities, excluding=[0],
                                     position=list(range(0, config['MAX_QPAIRS'], 2))),
         "device": config['DEVICE'],
         "data_fn": partial(SimpleSampler, bs=config["BATCH_SIZE"]),

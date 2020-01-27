@@ -1257,9 +1257,25 @@ class DataManager(object):
         # Return this removed from range(n_ents)
         return np.arange(n_ents)[appeared == 0]
 
+    # @staticmethod
+    # def get_graph_repr(train: List[List[int]], valid: List[List[int]], test: List[List[int]],
+    #                ne: int, nr: int, config):
+    #
+    #     has_qualifiers: bool = True
+    #
+    #
+    #
+    #     train_edge_index, train_edge_type, train_qual_rel, train_qual_ent = _get_graph_repr_(train)
+    #     valid_edge_index, valid_edge_type, valid_qual_rel, valid_qual_ent = _get_graph_repr_(valid)
+    #     test_edge_index, test_edge_type, test_qual_rel, test_qual_ent = _get_graph_repr_(test)
+    #
+    #     return train_edge_index, train_edge_type, train_qual_rel, train_qual_ent, \
+    #            valid_edge_index, valid_edge_type, valid_qual_rel, valid_qual_ent, \
+    #            test_edge_index, test_edge_type, test_qual_rel, test_qual_ent
+
     @staticmethod
-    def get_graph_repr(train: List[List[int]], valid: List[List[int]], test: List[List[int]],
-                   ne: int, nr: int, config):
+    def get_graph_repr(raw: Union[List[List[int]], np.ndarray], config: dict) \
+            -> (np.ndarray, np.ndarray, np.ndarray, np.ndarray):
         """
             Decisions:
                 We are NOT making inverse of qualifier relations. Those are just repeated.
@@ -1277,51 +1293,42 @@ class DataManager(object):
 
                     create reverse relations in the existing stuff.
 
-            TODO: Check if the data has repeats (should not).  x
+            TODO: Check if the data has repeats (should not).
 
-            :param train: [[s, p, o, qr1, qe1, qr2, qe3...], ..., [...]] (already have a max length
-            :param valid: [[s, p, o, qr1, qe1, qr2, qe3...], ..., [...]] (already have a max length
-            :param test: [[s, p, o, qr1, qe1, qr2, qe3...], ..., [...]] (already have a max length
-            :param ne: number of entities in the KG
-            :param nr: number of relations in the KG
+            :param raw: [[s, p, o, qr1, qe1, qr2, qe3...], ..., [...]]
+                (already have a max qualifier length padded data)
             :param config: the config dict
         """
-        has_qualifiers: bool = True
+        has_qualifiers: bool = config['STATEMENT_LEN'] != 3
+        try:
+            nr = config['NUM_RELATIONS']
+        except KeyError:
+            raise AssertionError("Function called too soon. Num relations not found.")
 
-        def _get_graph_repr_(raw) -> (np.ndarray, np.ndarray, np.ndarray, np.ndarray):
-            """ Actual thing happens here """
-            edge_index, edge_type = np.zeros((2, len(raw) * 2)), np.zeros((len(raw) * 2))
-            qual_rel = np.zeros(((len(raw[0]) - 3) // 2, len(raw) * 2))
-            qual_ent = np.zeros(((len(raw[0]) - 3) // 2, len(raw) * 2))
+        edge_index, edge_type = np.zeros((2, len(raw) * 2)), np.zeros((len(raw) * 2))
+        qual_rel = np.zeros(((len(raw[0]) - 3) // 2, len(raw) * 2))
+        qual_ent = np.zeros(((len(raw[0]) - 3) // 2, len(raw) * 2))
 
-            # Add actual data
-            for i, data in enumerate(raw):
-                edge_index[:, i] = [data[0], data[2]]
-                edge_type[i] = data[1]
+        # Add actual data
+        for i, data in enumerate(raw):
+            edge_index[:, i] = [data[0], data[2]]
+            edge_type[i] = data[1]
 
-                # @TODO: add qualifiers
-                if has_qualifiers:
-                    qual_rel[:, i] = data[3::2]
-                    qual_ent[:, i] = data[4::2]
-
-            # Add inverses
-            edge_index[1, len(raw):] = edge_index[0, :len(raw)]
-            edge_index[0, len(raw):] = edge_index[1, :len(raw)]
-            edge_type[len(raw):] = edge_type[:len(raw)] + nr
-
+            # @TODO: add qualifiers
             if has_qualifiers:
-                qual_rel[:, len(raw):] = qual_rel[:, :len(raw)]
-                qual_ent[:, len(raw):] = qual_ent[:, :len(raw)]
+                qual_rel[:, i] = data[3::2]
+                qual_ent[:, i] = data[4::2]
 
-            return edge_index, edge_type, qual_rel, qual_ent
+        # Add inverses
+        edge_index[1, len(raw):] = edge_index[0, :len(raw)]
+        edge_index[0, len(raw):] = edge_index[1, :len(raw)]
+        edge_type[len(raw):] = edge_type[:len(raw)] + nr
 
-        train_edge_index, train_edge_type, train_qual_rel, train_qual_ent = _get_graph_repr_(train)
-        valid_edge_index, valid_edge_type, valid_qual_rel, valid_qual_ent = _get_graph_repr_(valid)
-        test_edge_index, test_edge_type, test_qual_rel, test_qual_ent = _get_graph_repr_(test)
+        if has_qualifiers:
+            qual_rel[:, len(raw):] = qual_rel[:, :len(raw)]
+            qual_ent[:, len(raw):] = qual_ent[:, :len(raw)]
 
-        return train_edge_index, train_edge_type, train_qual_rel, train_qual_ent, \
-               valid_edge_index, valid_edge_type, valid_qual_rel, valid_qual_ent, \
-               test_edge_index, test_edge_type, test_qual_rel, test_qual_ent
+        return edge_index, edge_type, qual_rel, qual_ent
 
 
 if __name__ == "__main__":
@@ -1332,10 +1339,11 @@ if __name__ == "__main__":
     # ds4 = load_wd15k_qonly_triples()
     # print(len(ds4))
 
-    ds = load_wd15k_66_statements(maxlen=43)
-    tr = ds['train']
-    vl = ds['valid']
-    ts = ds['test']
-    ne = ds['n_entities']
-    nr = ds['n_relations']
-    print("Magic Mike!")
+    # ds = load_wd15k_66_statements(maxlen=43)
+    # tr = ds['train']
+    # vl = ds['valid']
+    # ts = ds['test']
+    # ne = ds['n_entities']
+    # nr = ds['n_relations']
+    # print("Magic Mike!")
+    ...
