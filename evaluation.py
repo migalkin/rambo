@@ -27,7 +27,7 @@ class EvaluationBench:
             :param data: {'index': list/iter of positive triples, 'eval': list/iter of positive triples}.
             Np array are appreciated
             :param model: the nn module we're testing
-            :param excluding_entities: either an int (indicating num_entities), or a array of possible negative entities
+            :param excluding_entities: either an int (indicating n_entities), or a array of possible negative entities
             :param bs: anything under 256 is shooting yourself in the foot.
             :param metrics: a list of callable (from methods in this file) we call to get a metric
             :param filtered: if you want corrupted triples checked.

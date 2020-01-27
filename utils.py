@@ -269,10 +269,10 @@ def create_y_label_for_classifier_alternative(dataset: str, statement_length: in
 
     ent_counter, rel_counter = {}, {}
 
-    for i in range(data['num_entities']):
+    for i in range(data['n_entities']):
         ent_counter[i] = [0,0]
 
-    for i in range(data['num_relations']):
+    for i in range(data['n_relations']):
         rel_counter[i] = [0,0]
 
 
