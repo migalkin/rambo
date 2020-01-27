@@ -8,11 +8,13 @@ import torch
 from torch import nn
 import torch.autograd
 import torch.nn.functional as F
+from torch.nn import Parameter
 
 import numpy as np
 from typing import List, Optional, Dict, Tuple
 
 # Local imports
+from utils_gcn import get_param, scatter_add, MessagePassing, ccorr
 from utils import *
 
 
@@ -62,7 +64,8 @@ class BaseModule(nn.Module):
     def _get_entity_embeddings(self, entities: torch.Tensor) -> torch.Tensor:
         return self.entity_embeddings(entities).view(-1, self.embedding_dim)
 
-    def _compute_loss(self, positive_scores: torch.Tensor, negative_scores: torch.Tensor) -> torch.Tensor:
+    def _compute_loss(self, positive_scores: torch.Tensor,
+                      negative_scores: torch.Tensor) -> torch.Tensor:
         y = np.repeat([-1], repeats=positive_scores.shape[0])
         y = torch.tensor(y, dtype=torch.float, device=self.device)
 
@@ -77,7 +80,8 @@ def slice_triples(triples: torch.Tensor, slices: int):
     elif slices == 3:
         return triples[:, 0], triples[:, 1], triples[:, 2]
     else:
-        return triples[:, 0], triples[:, 2::2], triples[:, 1::2]  # subject, all other entities, all relations
+        return triples[:, 0], triples[:, 2::2], triples[:,
+                                                1::2]  # subject, all other entities, all relations
 
 
 class TransE(BaseModule):
@@ -108,12 +112,13 @@ class TransE(BaseModule):
         # Embeddings
         self.l_p_norm_entities = config['NORM_FOR_NORMALIZATION_OF_ENTITIES']
         self.scoring_fct_norm = config['SCORING_FUNCTION_NORM']
-        self.relation_embeddings = nn.Embedding(config['NUM_RELATIONS'], config['EMBEDDING_DIM'], padding_idx=0)
+        self.relation_embeddings = nn.Embedding(config['NUM_RELATIONS'], config['EMBEDDING_DIM'],
+                                                padding_idx=0)
 
         self.config = config
 
         if self.config['PROJECT_QUALIFIERS']:
-            self.proj_mat = nn.Linear(2*self.embedding_dim, self.embedding_dim, bias=False)
+            self.proj_mat = nn.Linear(2 * self.embedding_dim, self.embedding_dim, bias=False)
 
         self._initialize()
 
@@ -140,7 +145,8 @@ class TransE(BaseModule):
             norms.view(self.num_relations, 1).expand_as(self.relation_embeddings.weight))
 
         self.relation_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)
-        self.entity_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)  # zeroing the padding index
+        self.entity_embeddings.weight.data[0] = torch.zeros(1,
+                                                            self.embedding_dim)  # zeroing the padding index
 
     def predict(self, triples):
         scores = self._score_triples(triples)
@@ -153,7 +159,8 @@ class TransE(BaseModule):
         norms = torch.norm(self.entity_embeddings.weight, p=self.l_p_norm_entities, dim=1).data
         self.entity_embeddings.weight.data = self.entity_embeddings.weight.data.div(
             norms.view(self.num_entities, 1).expand_as(self.entity_embeddings.weight))
-        self.entity_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)  # zeroing the padding index
+        self.entity_embeddings.weight.data[0] = torch.zeros(1,
+                                                            self.embedding_dim)  # zeroing the padding index
 
         positive_scores = self._score_triples(batch_positives)
         negative_scores = self._score_triples(batch_negatives)
@@ -165,7 +172,8 @@ class TransE(BaseModule):
         scores = self._compute_scores(*self._get_triple_embeddings(triples))
         return scores
 
-    def _self_attention_2d(self, head_embeddings, relation_embeddings, tail_embeddings, scale=False):
+    def _self_attention_2d(self, head_embeddings, relation_embeddings, tail_embeddings,
+                           scale=False):
         """ Simple self attention """
         # @TODO: Add scaling factor
 
@@ -191,7 +199,8 @@ class TransE(BaseModule):
         score = masked_softmax(score, mask)
         weighted_qualifier_vectors = score.unsqueeze(-1) * qualifier_vectors
 
-        return torch.sum(torch.cat((triple_vector.unsqueeze(1), weighted_qualifier_vectors),  dim=1), dim=1)
+        return torch.sum(
+            torch.cat((triple_vector.unsqueeze(1), weighted_qualifier_vectors), dim=1), dim=1)
 
     def _compute_scores(self, head_embeddings, relation_embeddings, tail_embeddings,
                         qual_relation_embeddings=None, qual_entity_embeddings=None):
@@ -215,17 +224,19 @@ class TransE(BaseModule):
 
             # Project or not
             if self.config['PROJECT_QUALIFIERS']:
-                #relation_embeddings[:,1:,:] = self.proj_mat(relation_embeddings[:,1:,:])
-                #tail_embeddings[:,1:,:] = self.proj_mat(tail_embeddings[:,1:,:])
+                # relation_embeddings[:,1:,:] = self.proj_mat(relation_embeddings[:,1:,:])
+                # tail_embeddings[:,1:,:] = self.proj_mat(tail_embeddings[:,1:,:])
 
                 quals = torch.sum(relation_embeddings[:, 1:, :] - tail_embeddings[:, 1:, :], dim=1)
                 new_rel = torch.cat((relation_embeddings[:, 0, :], quals), dim=1)
                 p_proj = self.proj_mat(new_rel)
                 sum_res = head_embeddings + p_proj - tail_embeddings[:, 0, :]
-            elif self.config['SELF_ATTENTION']==1:
-                sum_res = self._self_attention_1d(head_embeddings, relation_embeddings, tail_embeddings)
-            elif self.config['SELF_ATTENTION']==2:
-                sum_res = self._self_attention_2d(head_embeddings, relation_embeddings, tail_embeddings)
+            elif self.config['SELF_ATTENTION'] == 1:
+                sum_res = self._self_attention_1d(head_embeddings, relation_embeddings,
+                                                  tail_embeddings)
+            elif self.config['SELF_ATTENTION'] == 2:
+                sum_res = self._self_attention_2d(head_embeddings, relation_embeddings,
+                                                  tail_embeddings)
             else:
                 sum_res = head_embeddings + torch.sum(relation_embeddings - tail_embeddings, dim=1)
         distances = torch.norm(sum_res, dim=1, p=self.scoring_fct_norm).view(size=(-1,))
@@ -281,7 +292,8 @@ class ConvKB(BaseModule):
         # Embeddings
         self.l_p_norm_entities = config['NORM_FOR_NORMALIZATION_OF_ENTITIES']
         self.scoring_fct_norm = config['SCORING_FUNCTION_NORM']
-        self.relation_embeddings = nn.Embedding(config['NUM_RELATIONS'], config['EMBEDDING_DIM'], padding_idx=0)
+        self.relation_embeddings = nn.Embedding(config['NUM_RELATIONS'], config['EMBEDDING_DIM'],
+                                                padding_idx=0)
 
         self.config = config
 
@@ -290,11 +302,11 @@ class ConvKB(BaseModule):
         )
 
         self.conv = nn.Conv2d(in_channels=1,
-                              out_channels=config['NUM_FILTER'], kernel_size=(config['MAX_QPAIRS'], 1),
+                              out_channels=config['NUM_FILTER'],
+                              kernel_size=(config['MAX_QPAIRS'], 1),
                               bias=True)
 
         self.fc = nn.Linear(config['NUM_FILTER'] * self.embedding_dim, 1, bias=False)
-
 
         self._initialize()
 
@@ -321,13 +333,15 @@ class ConvKB(BaseModule):
             norms.view(self.num_relations, 1).expand_as(self.relation_embeddings.weight))
 
         self.relation_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)
-        self.entity_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)  # zeroing the padding index
+        self.entity_embeddings.weight.data[0] = torch.zeros(1,
+                                                            self.embedding_dim)  # zeroing the padding index
 
     def predict(self, triples):
         scores = self._score_triples(triples)
         return scores
 
-    def _compute_loss(self, positive_scores: torch.Tensor, negative_scores: torch.Tensor) -> torch.Tensor:
+    def _compute_loss(self, positive_scores: torch.Tensor,
+                      negative_scores: torch.Tensor) -> torch.Tensor:
         # Let n items in pos score.
         y = np.repeat([-1], repeats=positive_scores.shape[0])  # n item here (all -1)
         y = torch.tensor(y, dtype=torch.float, device=self.device)
@@ -338,14 +352,14 @@ class ConvKB(BaseModule):
 
     def forward(self, batch_positives, batch_negatives) \
             -> Tuple[Tuple[torch.Tensor, torch.Tensor], torch.Tensor]:
-
         # Normalize embeddings of entities
         norms = torch.norm(self.entity_embeddings.weight, p=self.l_p_norm_entities, dim=1).data
 
         self.entity_embeddings.weight.data = self.entity_embeddings.weight.data.div(
             norms.view(self.num_entities, 1).expand_as(self.entity_embeddings.weight))
 
-        self.entity_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)  # zeroing the padding index
+        self.entity_embeddings.weight.data[0] = torch.zeros(1,
+                                                            self.embedding_dim)  # zeroing the padding index
 
         positive_scores = self._score_triples(batch_positives)
         negative_scores = self._score_triples(batch_negatives)
@@ -381,7 +395,8 @@ class ConvKB(BaseModule):
         statement_emb[:, 2::2] = tail_embeddings
 
         # Convolutional operation
-        statement_emb = F.relu(self.conv(statement_emb.unsqueeze(1))).squeeze(-1)  # bs*number_of_filter*emb_dim
+        statement_emb = F.relu(self.conv(statement_emb.unsqueeze(1))).squeeze(
+            -1)  # bs*number_of_filter*emb_dim
         statement_emb = statement_emb.view(statement_emb.shape[0], -1)
         score = self.fc(statement_emb)
 
@@ -439,14 +454,14 @@ class DenseClf(nn.Module):
 
         return _x
 
-    def evaluate(self,y_pred,y_true):
+    def evaluate(self, y_pred, y_true):
         """
         :param x: bs*nc
         :param y: bs*nc (nc is number of classes)
         :return: accuracy (torch tensor)
         """
         y_pred, y_true = torch.argmax(y_pred), torch.argmax(y_true)
-        final_score = torch.mean((y_pred==y_true).to(torch.float))
+        final_score = torch.mean((y_pred == y_true).to(torch.float))
         return final_score
 
 
@@ -487,24 +502,28 @@ class GraphAttentionLayerMultiHead(nn.Module):
         # data: bs, n, emb
         bs, _, _ = data.shape
 
-        c = self.w1(data)                                   # c: bs, n, out_features
-        b = self.relu(self.w2(c)).squeeze()                 # b: bs, n, num_heads
-        m = mask.unsqueeze(-1).repeat(1, 1, self.heads)     # m: bs, n, num_heads
-        alphas = masked_softmax(b, m, dim=1)                # α: bs, n, num_heads
+        c = self.w1(data)  # c: bs, n, out_features
+        b = self.relu(self.w2(c)).squeeze()  # b: bs, n, num_heads
+        m = mask.unsqueeze(-1).repeat(1, 1, self.heads)  # m: bs, n, num_heads
+        alphas = masked_softmax(b, m, dim=1)  # α: bs, n, num_heads
 
         # BMM simultaneously weighs the triples and sums across neighbors
-        h = torch.bmm(c.transpose(1, 2), alphas)            # h: bs, out_features, num_heads
+        h = torch.bmm(c.transpose(1, 2), alphas)  # h: bs, out_features, num_heads
 
         if self.final:
-            h = torch.mean(h, dim=-1)                       # h: bs, out_features
+            h = torch.mean(h, dim=-1)  # h: bs, out_features
         else:
             # Their implementation uses ELU instead of RELU :/
-            h = F.elu(h).view(bs, -1)                       # h: bs, out_features*num_heads
+            h = F.elu(h).view(bs, -1)  # h: bs, out_features*num_heads
 
         return h
 
 
 class KBGat(BaseModule):
+    """
+        Untested.
+        And Depreciated
+    """
     model_name = 'KBGAT'
 
     def __init__(self, config: dict, pretrained_embeddings=None) -> None:
@@ -519,7 +538,8 @@ class KBGat(BaseModule):
         # Embeddings
         self.l_p_norm_entities = config['NORM_FOR_NORMALIZATION_OF_ENTITIES']
         self.scoring_fct_norm = config['SCORING_FUNCTION_NORM']
-        self.relation_embeddings = nn.Embedding(config['NUM_RELATIONS'], config['EMBEDDING_DIM'], padding_idx=0)
+        self.relation_embeddings = nn.Embedding(config['NUM_RELATIONS'], config['EMBEDDING_DIM'],
+                                                padding_idx=0)
 
         self.config = config
 
@@ -527,7 +547,8 @@ class KBGat(BaseModule):
             self.proj_mat = nn.Linear(2 * self.embedding_dim, self.embedding_dim, bias=False)
 
         self.gat1 = GraphAttentionLayerMultiHead(self.config, final_layer=False)
-        self.gat2 = GraphAttentionLayerMultiHead(self.config, residual_dim=self.config['EMBEDDING_DIM'],
+        self.gat2 = GraphAttentionLayerMultiHead(self.config,
+                                                 residual_dim=self.config['EMBEDDING_DIM'],
                                                  final_layer=True)
 
         # Note: not initing them
@@ -557,7 +578,8 @@ class KBGat(BaseModule):
                 norms.view(self.num_relations, 1).expand_as(self.relation_embeddings.weight))
 
             self.relation_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)
-            self.entity_embeddings.weight.data[0] = torch.zeros(1, self.embedding_dim)  # zeroing the padding index
+            self.entity_embeddings.weight.data[0] = torch.zeros(1,
+                                                                self.embedding_dim)  # zeroing the padding index
 
         else:
             raise NotImplementedError("Haven't wired in the mechanism to load weights yet fam")
@@ -620,8 +642,8 @@ class KBGat(BaseModule):
         return distances
 
     def _score_o_(self, s: torch.Tensor, p: torch.Tensor, o: torch.Tensor,
-                 h1_s: torch.Tensor, h1_p: torch.Tensor,
-                 h2_s: torch.Tensor, h2_p1: torch.Tensor, h2_p2: torch.Tensor) -> torch.Tensor:
+                  h1_s: torch.Tensor, h1_p: torch.Tensor,
+                  h2_s: torch.Tensor, h2_p1: torch.Tensor, h2_p2: torch.Tensor) -> torch.Tensor:
         """
             Expected embedded tensors: following
 
@@ -642,37 +664,39 @@ class KBGat(BaseModule):
         """
 
         # Compute Masks
-        mask1 = compute_mask(h1_s)[:, :, 0]                             # m1   : (bs, n)
-        mask2 = compute_mask(h2_s)[:, :, 0]                             # m2   : (bs, n)
+        mask1 = compute_mask(h1_s)[:, :, 0]  # m1   : (bs, n)
+        mask2 = compute_mask(h2_s)[:, :, 0]  # m2   : (bs, n)
 
         # Cat `o` in in h1
-        h1_o = o.repeat(1, h1_s.shape[1], 1)                            # h1_o : (bs, n, emb)
-        h1_o = h1_o * mask1.unsqueeze(-1)                               # h1_o : (bs, n, emb)
-        h1 = torch.cat((h1_s, h1_p, h1_o), dim=-1)                      # h1   : (bs, n, 3*emb)
+        h1_o = o.repeat(1, h1_s.shape[1], 1)  # h1_o : (bs, n, emb)
+        h1_o = h1_o * mask1.unsqueeze(-1)  # h1_o : (bs, n, emb)
+        h1 = torch.cat((h1_s, h1_p, h1_o), dim=-1)  # h1   : (bs, n, 3*emb)
 
         # Pass to first graph attn layer
-        gat1_op = self.gat1(h1, mask1)                                  # op   : (bs, num_head*out_dim)
+        gat1_op = self.gat1(h1, mask1)  # op   : (bs, num_head*out_dim)
         self.normalize()
 
         # Do the G` = G*W thing here
-        gat1_p = self.wr(p.squeeze(1))                                             # rels : (bs, emb')
-        gat1_op_concat = torch.cat((gat1_op, gat1_p), dim=-1)           # op   : (bs, emb'+num_head*out_dim)
+        gat1_p = self.wr(p.squeeze(1))  # rels : (bs, emb')
+        gat1_op_concat = torch.cat((gat1_op, gat1_p), dim=-1)  # op   : (bs, emb'+num_head*out_dim)
 
         # Average h2_p1, h2_p2
-        h2_p = (h2_p1 + h2_p2) / 2.0                                    # h2_p : (bs, n, emb)
+        h2_p = (h2_p1 + h2_p2) / 2.0  # h2_p : (bs, n, emb)
 
         # Treat this as the new "o", and throw in h2 data as well.
-        h2_o = gat1_op_concat.unsqueeze(1).repeat(1, h2_s.shape[1], 1)  # h2_o : (bs, n, num_head*out_dim + emb')
-        h2_o = h2_o * mask2.unsqueeze(-1)                               # h2_o : (bs, n, num_head*out_dim + emb')
-        h2 = torch.cat((h2_s, h2_p, h2_o), dim=-1)                      # h2   : (bs, n, 2*emb + num_head*out_dim + emb')
+        h2_o = gat1_op_concat.unsqueeze(1).repeat(1, h2_s.shape[1],
+                                                  1)  # h2_o : (bs, n, num_head*out_dim + emb')
+        h2_o = h2_o * mask2.unsqueeze(-1)  # h2_o : (bs, n, num_head*out_dim + emb')
+        h2 = torch.cat((h2_s, h2_p, h2_o),
+                       dim=-1)  # h2   : (bs, n, 2*emb + num_head*out_dim + emb')
 
         # Pass to second graph attn layer
-        hf = self.gat2(h2, mask2)                                       # hf   : (bs, out_dim)
+        hf = self.gat2(h2, mask2)  # hf   : (bs, out_dim)
         self.normalize()
 
         # Eq. 12 (H'' = W^EH^T + H^F)
         # @TODO: Should we add or concat?
-        hf = hf + self.we(o.squeeze(1))                                 # hf   : (bs, out_dim)
+        hf = hf + self.we(o.squeeze(1))  # hf   : (bs, out_dim)
         # hf = torch.cat((hf, self.we(o.squeeze(1))), dim=-1)           # hf   : (bs, out_dim*2)
 
         return hf
@@ -680,26 +704,374 @@ class KBGat(BaseModule):
     def _embed_(self, tr, h1, h2):
         """ The obj is to pass things through entity and rel matrices as needed """
         # Triple
-        s, p, o = slice_triples(tr, 3)                                  # *    : (bs, 1)
+        s, p, o = slice_triples(tr, 3)  # *    : (bs, 1)
 
         s = self.entity_embeddings(s).unsqueeze(1)
         p = self.relation_embeddings(p).unsqueeze(1)
-        o = self.entity_embeddings(o).unsqueeze(1)                      # o    : (bs, 1, emb)
+        o = self.entity_embeddings(o).unsqueeze(1)  # o    : (bs, 1, emb)
 
         # Hop1
-        h1_s, h1_p = h1[:, :, 0], h1[:, :, 1]                           # h1_* : (bs, n)
+        h1_s, h1_p = h1[:, :, 0], h1[:, :, 1]  # h1_* : (bs, n)
 
-        h1_s = self.entity_embeddings(h1_s)                             # h1_s : (bs, n, emb)
-        h1_p = self.relation_embeddings(h1_p)                           # h1_p : (bs, n, emb)
+        h1_s = self.entity_embeddings(h1_s)  # h1_s : (bs, n, emb)
+        h1_p = self.relation_embeddings(h1_p)  # h1_p : (bs, n, emb)
 
         # Hop2
-        h2_s, h2_p1, h2_p2 = h2[:, :, 0], h2[:, :, 1], h2[:, :, 2]      # h2_* : (bs, n)
+        h2_s, h2_p1, h2_p2 = h2[:, :, 0], h2[:, :, 1], h2[:, :, 2]  # h2_* : (bs, n)
 
-        h2_s = self.entity_embeddings(h2_s)                             # h2_s : (bs, n, emb)
-        h2_p1 = self.relation_embeddings(h2_p1)                         # h2_p1: (bs, n, emb)
-        h2_p2 = self.relation_embeddings(h2_p2)                         # h2_p2: (bs, n, emb)
+        h2_s = self.entity_embeddings(h2_s)  # h2_s : (bs, n, emb)
+        h2_p1 = self.relation_embeddings(h2_p1)  # h2_p1: (bs, n, emb)
+        h2_p2 = self.relation_embeddings(h2_p2)  # h2_p2: (bs, n, emb)
 
         return s, p, o, h1_s, h1_p, h2_s, h2_p1, h2_p2
 
     def _get_relation_embeddings(self, relations):
         return self.relation_embeddings(relations).view(-1, self.embedding_dim)
+
+
+class BaseModel(torch.nn.Module):
+    def __init__(self, params):
+        super(BaseModel, self).__init__()
+
+        self.p = params
+        self.act = torch.tanh
+        self.bceloss = torch.nn.BCELoss()
+
+    def loss(self, pred, true_label):
+        return self.bceloss(pred, true_label)
+
+
+class CompGCNQ(BaseModel):
+    def __init__(self, edge_index, edge_type, num_rel, qualifier_ent, qualifier_rel, params=None):
+        super().__init__(params)
+
+        self.edge_index = edge_index
+        self.edge_type = edge_type
+        self.p.gcn_dim = self.p.embed_dim if self.p.gcn_layer == 1 else self.p.gcn_dim
+
+        self.qualifier_ent = qualifier_ent
+        self.qualifier_rel = qualifier_rel
+
+        self.init_embed = get_param((self.p.num_ent, self.p.init_dim))
+        self.device = self.edge_index.device
+
+        if self.p.num_bases > 0:
+            self.init_rel = get_param((self.p.num_bases, self.p.init_dim))
+        else:
+            if self.p.score_func == 'transe':
+                self.init_rel = get_param((num_rel, self.p.init_dim))
+            else:
+                self.init_rel = get_param((num_rel * 2, self.p.init_dim))
+
+        if self.p.num_bases > 0:
+            raise NotImplementedError
+            self.conv1 = CompGCNConvBasis(self.p.init_dim, self.p.gcn_dim, num_rel,
+                                          self.p.num_bases, act=self.act, params=self.p)
+            self.conv2 = CompGCNConvQualifier(self.p.gcn_dim, self.p.embed_dim, num_rel,
+                                              act=self.act,
+                                              params=self.p) if self.p.gcn_layer == 2 else None
+        else:
+            self.conv1 = CompGCNConvQualifier(self.p.init_dim, self.p.gcn_dim, num_rel,
+                                              act=self.act, params=self.p)
+            self.conv2 = CompGCNConvQualifier(self.p.gcn_dim, self.p.embed_dim, num_rel,
+                                              act=self.act,
+                                              params=self.p) if self.p.gcn_layer == 2 else None
+
+        self.register_parameter('bias', Parameter(torch.zeros(self.p.num_ent)))
+
+    def forward_base(self, sub, rel, drop1, drop2):
+
+        r = self.init_rel if self.p.score_func != 'transe' else torch.cat(
+            [self.init_rel, -self.init_rel], dim=0)
+
+        # x, edge_index, edge_type, rel_embed, qualifier_ent, qualifier_rel
+        x, r = self.conv1(x=self.init_embed, edge_index=self.edge_index,
+                          edge_type=self.edge_type, rel_embed=r,
+                          qualifier_ent=self.qualifier_ent,
+                          qualifier_rel=self.qualifier_rel)
+
+        x = drop1(x)
+        x, r = self.conv2(x=self.init_embed, edge_index=self.edge_index,
+                          edge_type=self.edge_type, rel_embed=r,
+                          qualifier_ent=self.qualifier_ent,
+                          qualifier_rel=self.qualifier_rel) if self.p.gcn_layer == 2 else (x, r)
+        x = drop2(x) if self.p.gcn_layer == 2 else x
+
+        sub_emb = torch.index_select(x, 0, sub)
+        rel_emb = torch.index_select(r, 0, rel)
+
+        return sub_emb, rel_emb, x
+
+
+class CompGCN_TransE(CompGCNQ):
+    def __init__(self, edge_index, edge_type, params=None):
+        super(self.__class__, self).__init__(edge_index, edge_type, params.num_rel, params)
+        self.drop = torch.nn.Dropout(self.p.hid_drop)
+
+    def forward(self, sub, rel):
+        sub_emb, rel_emb, all_ent = self.forward_base(sub, rel, self.drop, self.drop)
+        obj_emb = sub_emb + rel_emb
+
+        x = self.p.gamma - torch.norm(obj_emb.unsqueeze(1) - all_ent, p=1, dim=2)
+        score = torch.sigmoid(x)
+
+        return score
+
+
+class CompGCN_DistMult(CompGCNQ):
+    def __init__(self, edge_index, edge_type, params=None):
+        super(self.__class__, self).__init__(edge_index, edge_type, params.num_rel, params)
+        self.drop = torch.nn.Dropout(self.p.hid_drop)
+
+    def forward(self, sub, rel):
+        sub_emb, rel_emb, all_ent = self.forward_base(sub, rel, self.drop, self.drop)
+        obj_emb = sub_emb * rel_emb
+
+        x = torch.mm(obj_emb, all_ent.transpose(1, 0))
+        x += self.bias.expand_as(x)
+
+        score = torch.sigmoid(x)
+        return score
+
+
+class CompGCN_ConvE(CompGCNQ):
+    def __init__(self, edge_index, edge_type, params=None):
+        super(self.__class__, self).__init__(edge_index, edge_type, params.num_rel, params)
+
+        self.bn0 = torch.nn.BatchNorm2d(1)
+        self.bn1 = torch.nn.BatchNorm2d(self.p.num_filt)
+        self.bn2 = torch.nn.BatchNorm1d(self.p.embed_dim)
+
+        self.hidden_drop = torch.nn.Dropout(self.p.hid_drop)
+        self.hidden_drop2 = torch.nn.Dropout(self.p.hid_drop2)
+        self.feature_drop = torch.nn.Dropout(self.p.feat_drop)
+        self.m_conv1 = torch.nn.Conv2d(1, out_channels=self.p.num_filt,
+                                       kernel_size=(self.p.ker_sz, self.p.ker_sz), stride=1,
+                                       padding=0, bias=self.p.bias)
+
+        flat_sz_h = int(2 * self.p.k_w) - self.p.ker_sz + 1
+        flat_sz_w = self.p.k_h - self.p.ker_sz + 1
+        self.flat_sz = flat_sz_h * flat_sz_w * self.p.num_filt
+        self.fc = torch.nn.Linear(self.flat_sz, self.p.embed_dim)
+
+    def concat(self, e1_embed, rel_embed):
+        e1_embed = e1_embed.view(-1, 1, self.p.embed_dim)
+        rel_embed = rel_embed.view(-1, 1, self.p.embed_dim)
+        stack_inp = torch.cat([e1_embed, rel_embed], 1)
+        stack_inp = torch.transpose(stack_inp, 2, 1).reshape((-1, 1, 2 * self.p.k_w, self.p.k_h))
+        return stack_inp
+
+    def forward(self, sub, rel):
+        sub_emb, rel_emb, all_ent = self.forward_base(sub, rel, self.hidden_drop,
+                                                      self.feature_drop)
+        stk_inp = self.concat(sub_emb, rel_emb)
+        x = self.bn0(stk_inp)
+        x = self.m_conv1(x)
+        x = self.bn1(x)
+        x = F.relu(x)
+        x = self.feature_drop(x)
+        x = x.view(-1, self.flat_sz)
+        x = self.fc(x)
+        x = self.hidden_drop2(x)
+        x = self.bn2(x)
+        x = F.relu(x)
+
+        x = torch.mm(x, all_ent.transpose(1, 0))
+        x += self.bias.expand_as(x)
+
+        score = torch.sigmoid(x)
+        return score
+
+
+class CompGCNConvQualifier(MessagePassing):
+    """ The important stuff. """
+
+    def __init__(self, in_channels, out_channels, num_rels, act=lambda x: x,
+                 params=None):
+        super(self.__class__, self).__init__()
+
+        self.p = params
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.num_rels = num_rels
+        self.act = act
+        self.device = None
+
+        self.w_loop = get_param((in_channels, out_channels))  # (100,200)
+        self.w_in = get_param((in_channels, out_channels))  # (100,200)
+        self.w_out = get_param((in_channels, out_channels))  # (100,200)
+        self.w_rel = get_param((in_channels, out_channels))  # (100,200)
+
+        self.w_q = get_param((in_channels, in_channels))  # new
+
+        self.loop_rel = get_param((1, in_channels))  # (1,100)
+        self.loop_ent = get_param((1, in_channels))  # new
+
+        self.drop = torch.nn.Dropout(self.p.dropout)
+        self.bn = torch.nn.BatchNorm1d(out_channels)
+
+        if self.p.bias: self.register_parameter('bias', Parameter(
+            torch.zeros(out_channels)))
+
+    def forward(self, x, edge_index, edge_type, rel_embed, qualifier_ent, qualifier_rel):
+        if self.device is None:
+            self.device = edge_index.device
+
+        rel_embed = torch.cat([rel_embed, self.loop_rel], dim=0)
+        num_edges = edge_index.size(1) // 2
+        num_ent = x.size(0)
+
+        self.in_index, self.out_index = edge_index[:, :num_edges], edge_index[:, num_edges:]
+        self.in_type, self.out_type = edge_type[:num_edges], edge_type[num_edges:]
+
+        self.in_index_qual_ent, self.out_index_qual_ent = qualifier_ent[:, :num_edges], \
+                                                          qualifier_ent[:, num_edges:]
+
+        self.in_index_qual_rel, self.out_index_qual_rel = qualifier_rel[:, :num_edges], \
+                                                          qualifier_rel[:, num_edges:]
+
+        # Self edges between all the nodes
+        self.loop_index = torch.stack([torch.arange(num_ent), torch.arange(num_ent)]).to(self.device)
+        self.loop_type = torch.full((num_ent,), rel_embed.size(0) - 1,
+                                    dtype=torch.long).to(
+            self.device)  # if rel meb is 500, the index of the self emb is
+        # 499 .. which is just added here
+
+        self.in_norm = self.compute_norm(self.in_index, num_ent)
+        self.out_norm = self.compute_norm(self.out_index, num_ent)
+
+        # @TODO: compute the norms for qualifier_rel and pass it along
+
+        in_res = self.propagate('add', self.in_index, x=x, edge_type=self.in_type,
+                                rel_embed=rel_embed, edge_norm=self.in_norm, mode='in',
+                                ent_embed=x, qualifier_ent=self.in_index_qual_ent,
+                                qualifier_rel=self.in_index_qual_rel)
+
+        loop_res = self.propagate('add', self.loop_index, x=x, edge_type=self.loop_type,
+                                  rel_embed=rel_embed, edge_norm=None, mode='loop',
+                                  ent_embed=None, qualifier_ent=None, qualifier_rel=None)
+
+        out_res = self.propagate('add', self.out_index, x=x, edge_type=self.out_type,
+                                 rel_embed=rel_embed, edge_norm=self.out_norm, mode='out',
+                                 ent_embed=x, qualifier_ent=self.out_index_qual_ent,
+                                 qualifier_rel=self.out_index_qual_rel)
+
+        out = self.drop(in_res) * (1 / 3) + self.drop(out_res) * (1 / 3) + loop_res * (1 / 3)
+
+        if self.p.bias:
+            out = out + self.bias
+        out = self.bn(out)
+
+        return self.act(out), torch.matmul(rel_embed, self.w_rel)[
+                              :-1]  # Ignoring the self loop inserted
+
+    def rel_transform(self, ent_embed, rel_embed):
+        if self.p.opn == 'corr':
+            trans_embed = ccorr(ent_embed, rel_embed)
+        elif self.p.opn == 'sub':
+            trans_embed = ent_embed - rel_embed
+        elif self.p.opn == 'mult':
+            trans_embed = ent_embed * rel_embed
+        else:
+            raise NotImplementedError
+
+        return trans_embed
+
+    def qual_transform(self, qualifier_ent, qualifier_rel):
+        """
+
+        :return:
+        """
+        # @TODO: check later
+        return self.rel_transform(qualifier_ent, qualifier_rel)  # check the order
+
+    def qualifier_aggregate(self, qualifier_emb, rel_part_emb, type='sum', alpha=0.5):
+        """
+            Aggregates the qualifier matrix (3, edge_index, emb_dim)
+        :param qualifier_emb:
+        :param rel_part_emb:
+        :param type:
+        :param alpha
+        :return:
+
+        @TODO: Check for activation over qualifier_emb
+        """
+        qualifier_emb = torch.mm(qualifier_emb.sum(axis=0), self.w_q)
+
+        if type == 'sum':
+            return alpha * rel_part_emb + (1 - alpha) * qualifier_emb  # TODO pass through W_q ?
+
+        else:
+            raise NotImplementedError
+
+    def update_rel_emb_with_qualifier(self, ent_embed, rel_embed,
+                                      qualifier_ent, qualifier_rel, edge_type):
+        """
+        :param rel_embed:
+        :param qualifier_ent:
+        :param qualifier_rel:
+        :return:
+
+        index select from embedding
+        phi operation between qualifier_ent, qualifier_rel
+        """
+
+        # Step1 - embed them
+        qualifier_emb_rel = rel_embed[qualifier_rel.reshape(1, -1)]. \
+            reshape(qualifier_rel.shape[0], qualifier_rel.shape[1], -1)
+
+        qualifier_emb_ent = ent_embed[qualifier_ent.reshape(1, -1)]. \
+            reshape(qualifier_ent.shape[0], qualifier_ent.shape[1], -1)
+
+        rel_part_emb = rel_embed[edge_type]
+
+        # TODO: check if rel_embed is dim is same
+        # as ent_embed dim else use a linear layer
+
+        # Step 2: pass it through qual_transform
+        qualifier_emb = self.qual_transform(qualifier_ent=qualifier_emb_ent,
+                                            qualifier_rel=qualifier_emb_rel)
+
+        # @TODO: pass it through a parameter layer
+        # Pass it through a aggregate layer
+
+        return self.qualifier_aggregate(qualifier_emb, rel_part_emb)
+
+    # return qualifier_emb
+    def message(self, x_j, edge_type, rel_embed, edge_norm, mode, ent_embed, qualifier_ent,
+                qualifier_rel):
+        weight = getattr(self, 'w_{}'.format(mode))
+
+        # add code here
+        if mode != 'loop':
+            rel_emb = self.update_rel_emb_with_qualifier(ent_embed, rel_embed, qualifier_ent,
+                                                         qualifier_rel, edge_type)  #
+        else:
+            torch.index_select(rel_embed, 0, edge_type)
+        xj_rel = self.rel_transform(x_j, rel_emb)
+        out = torch.mm(xj_rel, weight)
+
+        return out if edge_norm is None else out * edge_norm.view(-1, 1)
+
+    def update(self, aggr_out):
+        return aggr_out
+
+    @staticmethod
+    def compute_norm(edge_index, num_ent):
+        row, col = edge_index
+        edge_weight = torch.ones_like(
+            row).float()  # Identity matrix where we know all entities are there
+        deg = scatter_add(edge_weight, row, dim=0,
+                          dim_size=num_ent)  # Summing number of weights of
+        # the edges, D = A + I
+        deg_inv = deg.pow(-0.5)  # D^{-0.5}
+        deg_inv[deg_inv == float('inf')] = 0  # for numerical stability
+        norm = deg_inv[row] * edge_weight * deg_inv[
+            col]  # Norm parameter D^{-0.5} *
+
+        return norm
+
+    def __repr__(self):
+        return '{}({}, {}, num_rels={})'.format(
+            self.__class__.__name__, self.in_channels, self.out_channels,
+            self.num_rels)
