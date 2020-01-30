@@ -346,6 +346,32 @@ def create_neighbourhood_hashes(data: Dict) -> (Dict, Dict):
     hop2 = {k: list(set(v)) for k, v in hop2.items()}
     return hop1, hop2
 
+
+def combine(*args) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+    """
+        Used to semi-intelligently combine data splits
+
+        Case A)
+            args is a single element, an ndarray. Return as is.
+        Case B)
+            args are multiple ndarray. Numpy concat them.
+        Case C)
+            args is a single dict. Return as is.
+        Case D)
+            args is multiple dicts. Concat individual elements
+
+    :param args: (see above)
+    :return: A nd array or a dict
+    """
+
+    if len(args) == 1:
+        return args
+
+    if type(args[0]) is np.ndarray:
+        ...
+
+
+
 #
 # if __name__ == '__main__':
 #     e_map, rel_map = create_y_label_for_classifier(dataset = 'wd15k',

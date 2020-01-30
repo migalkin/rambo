@@ -2,6 +2,30 @@
     The file which actually manages to run everything
 
     TODO: How do we init a model with another model?
+
+    # Data.
+    Typically, sending the config dict, and executing the returned function gives us data,
+        in the form of
+            -> train_data (list of list of 43 / 5 or 3 elements)
+            -> valid_data
+            -> test_data
+            -> n_entities (an integer)
+            -> n_relations (an integer)
+            -> ent2id (dictionary to interpret the data above, if needed)
+            -> rel2id
+
+    However, when we want to run a GCN based model, we work with
+        COO representations of triples, and
+        adjacency representations of qualifiers.
+
+        In this case, for each split: [train, valid, test], we return
+        -> edge_index (2 x n) matrix with [subject_ent, object_ent] as each row.
+        -> edge_type (n) array with [relation] corresponding to sub, obj above
+        -> qual_rel (20 x n) matrix with [r_q1, r_q2, r_q3, ..., r_q20] for each relation above
+        -> qual_ent (20 x n) matrix with [e_q1, e_q2, e_q3, ..., e_q20] for each relation above
+
+        So here, train_data will be a dict containing these four ndarrays.
+
 """
 import os
 os.environ['MKL_NUM_THREADS'] = '1'
@@ -92,45 +116,49 @@ DEFAULT_CONFIG['KBGATARGS'] = KBGATARGS
 if __name__ == "__main__":
 
     # Get parsed arguments
+    config = DEFAULT_CONFIG.copy()
     parsed_args = parse_args(sys.argv[1:])
     print(parsed_args)
 
     # Superimpose this on default config
     # TODO- Needs to go to mytorch.
     for k, v in parsed_args.items():
-        if k not in DEFAULT_CONFIG.keys():
-            DEFAULT_CONFIG[k.upper()] = v
+        if k not in config.keys():
+            config[k.upper()] = v
         else:
-            default_val = DEFAULT_CONFIG[k.upper()]
+            default_val = config[k.upper()]
             if default_val is not None:
                 needed_type = type(default_val)
-                DEFAULT_CONFIG[k.upper()] = needed_type(v)
+                config[k.upper()] = needed_type(v)
             else:
-                DEFAULT_CONFIG[k.upper()] = v
+                config[k.upper()] = v
 
     """
         Custom Sanity Checks
     """
     # If we're corrupting something apart from S and O
-    if max(DEFAULT_CONFIG['CORRUPTION_POSITIONS']) > 2:
-        assert DEFAULT_CONFIG['ENT_POS_FILTERED'] is False, \
-            f"Since we're corrupting objects at pos. {DEFAULT_CONFIG['CORRUPTION_POSITIONS']}, " \
+    if max(config['CORRUPTION_POSITIONS']) > 2:
+        assert config['ENT_POS_FILTERED'] is False, \
+            f"Since we're corrupting objects at pos. {config['CORRUPTION_POSITIONS']}, " \
             f"You must allow including entities which appear exclusively in qualifiers, too!"
 
     """
         Loading and preparing data
     """
-    data = DataManager.load(config=DEFAULT_CONFIG)()
+    data = DataManager.load(config=config)()
 
     # Break down the data
     try:
-        train_triples, valid_triples, test_triples, n_entities, n_relations, _, _ = data.values()
+        train_data, valid_data, test_data, n_entities, n_relations, _, _ = data.values()
     except ValueError:
-        raise ValueError(f"Honey I broke the loader for {DEFAULT_CONFIG['DATASET']}")
+        raise ValueError(f"Honey I broke the loader for {config['DATASET']}")
+
+    config['NUM_ENTITIES'] = n_entities
+    config['NUM_RELATIONS'] = n_relations
 
     # KBGat Specific hashes (to compute neighborhood)
-    if DEFAULT_CONFIG['MODEL_NAME'].lower() == 'kbgat':
-        assert DEFAULT_CONFIG['DATASET'] == 'fb15k237'
+    if config['MODEL_NAME'].lower() == 'kbgat':
+        assert config['DATASET'] == 'fb15k237'
         hashes = create_neighbourhood_hashes(data)
     else:
         hashes = None
@@ -138,25 +166,24 @@ if __name__ == "__main__":
     # Exclude entities which don't appear in the dataset. E.g. entity nr. 455 may never appear.
     if DEFAULT_CONFIG['ENT_POS_FILTERED']:
         ent_excluded_from_corr = DataManager.gather_missing_entities(
-            data=train_triples + valid_triples + test_triples,
-            positions=DEFAULT_CONFIG['CORRUPTION_POSITIONS'],
+            data=train_data + valid_data + test_data,
+            positions=config['CORRUPTION_POSITIONS'],
             n_ents=n_entities)
     else:
         ent_excluded_from_corr = [0]
 
-    # CompGCN Specific data pre processing
-    if DEFAULT_CONFIG['MODEL_NAME'].lower() == 'compgcn':
-        ...
+    if config['MODEL_NAME'].lower() == 'compgcn':
+        # Replace the data with their graph repr formats
+        train_data = DataManager.get_graph_repr(train_data, config)
+        valid_data = DataManager.get_graph_repr(valid_data, config)
+        test_data = DataManager.get_graph_repr(test_data, config)
 
     print(f"Training on {n_entities} entities")
     print(f"Evaluating on {n_entities - len(ent_excluded_from_corr)} entities")
-    DEFAULT_CONFIG['NUM_ENTITIES'] = n_entities
-    DEFAULT_CONFIG['NUM_RELATIONS'] = n_relations
 
     """
         Make ze model
     """
-    config = DEFAULT_CONFIG.copy()
     config['DEVICE'] = torch.device(config['DEVICE'])
 
     if config['MODEL_NAME'].lower() == 'transe':
@@ -184,22 +211,21 @@ if __name__ == "__main__":
             wandb.config[k] = v
 
     """
-        Prepare test benches
-        TODO: Refactor this. This is ugly code.
+        Prepare test benches.
+        
+            When computing train accuracy (`ev_tr_data`), we wish to use all the other data 
+                to avoid generating true triples during corruption. 
+            Similarly, when computing test accuracy, we index train and valid splits 
+                to avoid generating negative triples.
     """
     if config['USE_TEST']:
-        ev_vl_data = {'index': np.concatenate((train_triples, valid_triples)),
-                      'eval': np.array(test_triples)}
-        ev_tr_data = {'index': np.concatenate((valid_triples, test_triples)),
-                      'eval': np.array(train_triples)}
-        tr_data = {'train': np.concatenate((train_triples, valid_triples)),
-                   'valid': ev_vl_data['eval']}
+        ev_vl_data = {'index': combine(train_data, valid_data), 'eval': combine(test_data)}
+        ev_tr_data = {'index': combine(valid_data, test_data), 'eval': combine(train_data)}
+        tr_data = {'train': combine(train_data, valid_data), 'valid': ev_vl_data['eval']}
     else:
-        ev_vl_data = {'index': np.concatenate((train_triples, test_triples)),
-                      'eval': np.array(valid_triples)}
-        ev_tr_data = {'index': np.concatenate((valid_triples, test_triples)),
-                      'eval': np.array(train_triples)}
-        tr_data = {'train': np.array(train_triples), 'valid': ev_vl_data['eval']}
+        ev_vl_data = {'index': combine(train_data, test_data), 'eval': combine(valid_data)}
+        ev_tr_data = {'index': combine(valid_data, test_data), 'eval': combine(train_data)}
+        tr_data = {'train': combine(train_data), 'valid': ev_vl_data['eval']}
 
     # if config['MODEL_NAME'].lower() == 'compgcn':
     #   TODO: DO something.
@@ -257,8 +283,8 @@ if __name__ == "__main__":
     if config['MODEL_NAME'] == 'kbgat':
         # Change the data fn
         neg_generator = args.pop('neg_generator')
-        args['data_fn'] = partial(NeighbourhoodSampler, bs=config["BATCH_SIZE"], corruptor=neg_generator,
-                                  hashes=hashes)
+        args['data_fn'] = partial(NeighbourhoodSampler, bs=config["BATCH_SIZE"],
+                                  corruptor=neg_generator, hashes=hashes)
 
         training_loop = training_loop_neighborhood
 

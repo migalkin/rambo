@@ -1275,7 +1275,7 @@ class DataManager(object):
 
     @staticmethod
     def get_graph_repr(raw: Union[List[List[int]], np.ndarray], config: dict) \
-            -> (np.ndarray, np.ndarray, np.ndarray, np.ndarray):
+            -> Dict[str, np.ndarray]:
         """
             Decisions:
                 We are NOT making inverse of qualifier relations. Those are just repeated.
@@ -1328,7 +1328,10 @@ class DataManager(object):
             qual_rel[:, len(raw):] = qual_rel[:, :len(raw)]
             qual_ent[:, len(raw):] = qual_ent[:, :len(raw)]
 
-        return edge_index, edge_type, qual_rel, qual_ent
+        return {'edge_index': edge_index,
+                'edge_type': edge_type,
+                'qual_rel': qual_rel,
+                'qual_ent': qual_ent}
 
 
 if __name__ == "__main__":
