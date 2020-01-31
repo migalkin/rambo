@@ -347,7 +347,7 @@ def create_neighbourhood_hashes(data: Dict) -> (Dict, Dict):
     return hop1, hop2
 
 
-def combine(*args) -> Union[np.ndarray, Dict[str, np.ndarray]]:
+def combine(*args: Union[np.ndarray, list]):
     """
         Used to semi-intelligently combine data splits
 
@@ -364,11 +364,22 @@ def combine(*args) -> Union[np.ndarray, Dict[str, np.ndarray]]:
     :return: A nd array or a dict
     """
 
-    if len(args) == 1:
+    # Case A, C
+    if len(args) == 1 or type(args) is dict:
         return args
 
-    if type(args[0]) is np.ndarray:
-        ...
+    # Case B
+    if type(args) is list and type(args[0]) is np.ndarray:
+        # Expected shape will be a x n, b x n. Simple concat will do.
+        return np.concatenate(args)
+
+    # Case D
+    if type(args) is list and type(args[0]) is dict:
+        keys = args[0].keys()
+        combined = {}
+        for k in keys:
+            combined[k] = np.concatenate([arg[k] for arg in args], dim=-1)
+        return combined
 
 
 
