@@ -94,7 +94,7 @@ class MessagePassing(torch.nn.Module):
 
 
 def get_param(shape):
-    param = Parameter(torch.Tensor(*shape));
+    param = Parameter(torch.Tensor(*shape))
     xavier_normal_(param.data)
     return param
 

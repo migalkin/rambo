@@ -9,8 +9,8 @@ from corruption import Corruption
 
 class EvaluationBench:
     """
-    Sampler which for each true triple,
-        |-> compares it with **all** possible negative triples, and reports metrics
+        Sampler which for each true triple,
+            |-> compares it with **all** possible negative triples, and reports metrics
     """
 
     def __init__(self,

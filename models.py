@@ -729,73 +729,83 @@ class KBGat(BaseModule):
         return self.relation_embeddings(relations).view(-1, self.embedding_dim)
 
 
-class BaseModel(torch.nn.Module):
-    def __init__(self, params):
-        super(BaseModel, self).__init__()
+class CompGCNBase(torch.nn.Module):
+    def __init__(self, config):
+        super(CompGCNBase, self).__init__()
+        """ Not saving the config dict bc model saving can get a little hairy. """
 
-        self.p = params
-        self.act = torch.tanh
+        self.act = torch.tanh if 'ACT' not in config['COMPGCNARGS'].keys() \
+            else config['COMPGCNARGS']['ACT']
         self.bceloss = torch.nn.BCELoss()
+
+        self.emb_dim = config['EMBEDDING_DIM']
+        self.num_rel = config['NUM_RELATIONS']
+        self.num_ent = config['NUM_ENTITIES']
+        self.n_bases = config['COMPGCNARGS']['N_BASES']
+        self.n_layer = config['COMPGCNARGS']['LAYERS']
+        self.gcn_dim = config['COMPGCNARGS']['GCN_DIM']
+        self.hid_drop = config['COMPGCNARGS']['HID_DROP']
+        self.model_nm = config['COMPGCNARGS']['MODEL_NAME'].lower()
 
     def loss(self, pred, true_label):
         return self.bceloss(pred, true_label)
 
 
-class CompGCNQ(BaseModel):
-    def __init__(self, edge_index, edge_type, num_rel, qualifier_ent, qualifier_rel, params=None):
-        super().__init__(params)
+class CompQGCNEncoder(CompGCNBase):
+    def __init__(self, graph_repr: Dict[str, np.ndarray], config: dict):
+        super().__init__(config)
 
-        self.edge_index = edge_index
-        self.edge_type = edge_type
-        self.p.gcn_dim = self.p.embed_dim if self.p.gcn_layer == 1 else self.p.gcn_dim
+        # Storing the KG
+        self.edge_index = graph_repr['edge_index']
+        self.edge_type = graph_repr['edge_type']
+        self.qual_rel = graph_repr['qual_rel']
+        self.qual_ent = graph_repr['qual_ent']
 
-        self.qualifier_ent = qualifier_ent
-        self.qualifier_rel = qualifier_rel
+        self.gcn_dim = self.emb_dim if self.n_layer == 1 else self.gcn_dim
+        self.init_embed = get_param((self.num_ent, self.emb_dim))
+        self.device = config['DEVICE']
 
-        self.init_embed = get_param((self.p.num_ent, self.p.init_dim))
-        self.device = self.edge_index.device
-
-        if self.p.num_bases > 0:
-            self.init_rel = get_param((self.p.num_bases, self.p.init_dim))
-        else:
-            if self.p.score_func == 'transe':
-                self.init_rel = get_param((num_rel, self.p.init_dim))
-            else:
-                self.init_rel = get_param((num_rel * 2, self.p.init_dim))
-
-        if self.p.num_bases > 0:
+        # What about bases?
+        if self.n_bases > 0:
+            self.init_rel = get_param((self.n_bases, self.emb_dim))
             raise NotImplementedError
-            self.conv1 = CompGCNConvBasis(self.p.init_dim, self.p.gcn_dim, num_rel,
-                                          self.p.num_bases, act=self.act, params=self.p)
-            self.conv2 = CompGCNConvQualifier(self.p.gcn_dim, self.p.embed_dim, num_rel,
-                                              act=self.act,
-                                              params=self.p) if self.p.gcn_layer == 2 else None
         else:
-            self.conv1 = CompGCNConvQualifier(self.p.init_dim, self.p.gcn_dim, num_rel,
-                                              act=self.act, params=self.p)
-            self.conv2 = CompGCNConvQualifier(self.p.gcn_dim, self.p.embed_dim, num_rel,
-                                              act=self.act,
-                                              params=self.p) if self.p.gcn_layer == 2 else None
+            if self.model_nm.endswith('transe'):
+                self.init_rel = get_param((self.num_rel, self.emb_dim))
+            else:
+                self.init_rel = get_param((self.num_rel * 2, self.emb_dim))
 
-        self.register_parameter('bias', Parameter(torch.zeros(self.p.num_ent)))
+        if self.n_bases > 0:
+            # self.conv1 = CompGCNConvBasis(self.emb_dim, self.gcn_dim, self.num_rel,
+            #                               self.n_bases, act=self.act, params=self.p)
+            self.conv2 = CompQGCNConvLayer(self.gcn_dim, self.emb_dim, self.num_rel, act=self.act,
+                                           params=self.p) if self.gcn_layer == 2 else None
+            raise NotImplementedError
+        else:
+            self.conv1 = CompQGCNConvLayer(self.emb_dim, self.gcn_dim, self.num_rel, act=self.act,
+                                           config=config)
+            self.conv2 = CompQGCNConvLayer(self.gcn_dim, self.emb_dim, self.num_rel, act=self.act,
+                                           config=config) if self.gcn_layer == 2 else None
+
+        self.register_parameter('bias', Parameter(torch.zeros(self.num_ent)))
 
     def forward_base(self, sub, rel, drop1, drop2):
 
-        r = self.init_rel if self.p.score_func != 'transe' else torch.cat(
-            [self.init_rel, -self.init_rel], dim=0)
+        r = self.init_rel if not self.model_nm.endswith('transe') \
+            else torch.cat([self.init_rel, -self.init_rel], dim=0)
 
-        # x, edge_index, edge_type, rel_embed, qualifier_ent, qualifier_rel
+        # x, edge_index, edge_type, rel_embed, qual_ent, qual_rel
         x, r = self.conv1(x=self.init_embed, edge_index=self.edge_index,
                           edge_type=self.edge_type, rel_embed=r,
-                          qualifier_ent=self.qualifier_ent,
-                          qualifier_rel=self.qualifier_rel)
+                          qualifier_ent=self.qual_ent,
+                          qualifier_rel=self.qual_rel)
 
         x = drop1(x)
         x, r = self.conv2(x=self.init_embed, edge_index=self.edge_index,
                           edge_type=self.edge_type, rel_embed=r,
-                          qualifier_ent=self.qualifier_ent,
-                          qualifier_rel=self.qualifier_rel) if self.p.gcn_layer == 2 else (x, r)
-        x = drop2(x) if self.p.gcn_layer == 2 else x
+                          qualifier_ent=self.qual_ent,
+                          qualifier_rel=self.qual_rel) if self.gcn_layer == 2 else (x, r)
+        x = drop2(x) if self.gcn_layer == 2 else x
 
         sub_emb = torch.index_select(x, 0, sub)
         rel_emb = torch.index_select(r, 0, rel)
@@ -803,10 +813,15 @@ class CompGCNQ(BaseModel):
         return sub_emb, rel_emb, x
 
 
-class CompGCN_TransE(CompGCNQ):
-    def __init__(self, edge_index, edge_type, params=None):
-        super(self.__class__, self).__init__(edge_index, edge_type, params.num_rel, params)
-        self.drop = torch.nn.Dropout(self.p.hid_drop)
+class CompGCNTransE(CompQGCNEncoder):
+    def __init__(self, kg_graph_repr: Dict[str, np.ndarray], config: dict, pretrained=None):
+
+        # @TODO: What to do of pretrained embeddings
+        if pretrained:
+            raise NotImplementedError
+
+        super(self.__class__, self).__init__(kg_graph_repr, config)
+        self.drop = torch.nn.Dropout(self.hid_drop)
 
     def forward(self, sub, rel):
         sub_emb, rel_emb, all_ent = self.forward_base(sub, rel, self.drop, self.drop)
@@ -818,10 +833,14 @@ class CompGCN_TransE(CompGCNQ):
         return score
 
 
-class CompGCN_DistMult(CompGCNQ):
-    def __init__(self, edge_index, edge_type, params=None):
-        super(self.__class__, self).__init__(edge_index, edge_type, params.num_rel, params)
-        self.drop = torch.nn.Dropout(self.p.hid_drop)
+class CompGCNDistMult(CompQGCNEncoder):
+    def __init__(self, kg_graph_repr: Dict[str, np.ndarray], config: dict):
+
+        super().__init__(kg_graph_repr, config)
+        self.drop = torch.nn.Dropout(self.hid_drop)
+
+        # TODO: Will raise error since bias is not defined.
+        raise AssertionError("self.bias is not defined.")
 
     def forward(self, sub, rel):
         sub_emb, rel_emb, all_ent = self.forward_base(sub, rel, self.drop, self.drop)
@@ -834,9 +853,15 @@ class CompGCN_DistMult(CompGCNQ):
         return score
 
 
-class CompGCN_ConvE(CompGCNQ):
-    def __init__(self, edge_index, edge_type, params=None):
-        super(self.__class__, self).__init__(edge_index, edge_type, params.num_rel, params)
+class CompGCNConvE(CompQGCNEncoder):
+    def __init__(self, kg_graph_repr: Dict[str, np.ndarray], config: dict):
+        super(self.__class__, self).__init__(kg_graph_repr, config)
+
+        self.hid_drop2 = config['COMPGCNARGS']['HID_DROP2']
+        self.feat_drop = config['COMPGCNARGS']['FEAT_DROP']
+        self.n_filters = config['COMPGCNARGS']['N_FILTERS']
+        self.kernel_sz = config['COMPGCNARGS']['KERNEL_SZ']
+        self.bias = config['COMPGCNARGS']['BIAS']
 
         self.bn0 = torch.nn.BatchNorm2d(1)
         self.bn1 = torch.nn.BatchNorm2d(self.p.num_filt)
@@ -883,11 +908,11 @@ class CompGCN_ConvE(CompGCNQ):
         return score
 
 
-class CompGCNConvQualifier(MessagePassing):
+class CompQGCNConvLayer(MessagePassing):
     """ The important stuff. """
 
     def __init__(self, in_channels, out_channels, num_rels, act=lambda x: x,
-                 params=None):
+                 config=None):
         super(self.__class__, self).__init__()
 
         self.p = params
@@ -931,7 +956,8 @@ class CompGCNConvQualifier(MessagePassing):
                                                           qualifier_rel[:, num_edges:]
 
         # Self edges between all the nodes
-        self.loop_index = torch.stack([torch.arange(num_ent), torch.arange(num_ent)]).to(self.device)
+        self.loop_index = torch.stack([torch.arange(num_ent), torch.arange(num_ent)]).to(
+            self.device)
         self.loop_type = torch.full((num_ent,), rel_embed.size(0) - 1,
                                     dtype=torch.long).to(
             self.device)  # if rel meb is 500, the index of the self emb is
@@ -940,7 +966,7 @@ class CompGCNConvQualifier(MessagePassing):
         self.in_norm = self.compute_norm(self.in_index, num_ent)
         self.out_norm = self.compute_norm(self.out_index, num_ent)
 
-        # @TODO: compute the norms for qualifier_rel and pass it along
+        # @TODO: compute the norms for qual_rel and pass it along
 
         in_res = self.propagate('add', self.in_index, x=x, edge_type=self.in_type,
                                 rel_embed=rel_embed, edge_norm=self.in_norm, mode='in',
@@ -962,8 +988,8 @@ class CompGCNConvQualifier(MessagePassing):
             out = out + self.bias
         out = self.bn(out)
 
-        return self.act(out), torch.matmul(rel_embed, self.w_rel)[
-                              :-1]  # Ignoring the self loop inserted
+        # Ignoring the self loop inserted, return.
+        return self.act(out), torch.matmul(rel_embed, self.w_rel)[:-1]
 
     def rel_transform(self, ent_embed, rel_embed):
         if self.p.opn == 'corr':
@@ -1013,7 +1039,7 @@ class CompGCNConvQualifier(MessagePassing):
         :return:
 
         index select from embedding
-        phi operation between qualifier_ent, qualifier_rel
+        phi operation between qual_ent, qual_rel
         """
 
         # Step1 - embed them

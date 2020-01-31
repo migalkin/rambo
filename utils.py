@@ -24,7 +24,6 @@ class UnknownSliceLength(Exception): pass
 
 class NonContinousIDSpace(Exception): pass
 
-
 # Some more nice stuff
 lowerall = lambda x: [itm.lower() for itm in x]
 
