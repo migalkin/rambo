@@ -745,7 +745,8 @@ class CompGCNBase(torch.nn.Module):
         self.n_layer = config['COMPGCNARGS']['LAYERS']
         self.gcn_dim = config['COMPGCNARGS']['GCN_DIM']
         self.hid_drop = config['COMPGCNARGS']['HID_DROP']
-        self.model_nm = config['COMPGCNARGS']['MODEL_NAME'].lower()
+        # self.bias = config['COMPGCNARGS']['BIAS']
+        self.model_nm = config['MODEL_NAME'].lower()
 
     def loss(self, pred, true_label):
         return self.bceloss(pred, true_label)
@@ -785,7 +786,7 @@ class CompQGCNEncoder(CompGCNBase):
             self.conv1 = CompQGCNConvLayer(self.emb_dim, self.gcn_dim, self.num_rel, act=self.act,
                                            config=config)
             self.conv2 = CompQGCNConvLayer(self.gcn_dim, self.emb_dim, self.num_rel, act=self.act,
-                                           config=config) if self.gcn_layer == 2 else None
+                                           config=config) if self.n_layer == 2 else None
 
         self.register_parameter('bias', Parameter(torch.zeros(self.num_ent)))
 
@@ -822,12 +823,13 @@ class CompGCNTransE(CompQGCNEncoder):
 
         super(self.__class__, self).__init__(kg_graph_repr, config)
         self.drop = torch.nn.Dropout(self.hid_drop)
+        self.gamma = config['COMPGCNARGS']['GAMMA']
 
     def forward(self, sub, rel):
         sub_emb, rel_emb, all_ent = self.forward_base(sub, rel, self.drop, self.drop)
         obj_emb = sub_emb + rel_emb
 
-        x = self.p.gamma - torch.norm(obj_emb.unsqueeze(1) - all_ent, p=1, dim=2)
+        x = self.gamma - torch.norm(obj_emb.unsqueeze(1) - all_ent, p=1, dim=2)
         score = torch.sigmoid(x)
 
         return score
@@ -838,9 +840,10 @@ class CompGCNDistMult(CompQGCNEncoder):
 
         super().__init__(kg_graph_repr, config)
         self.drop = torch.nn.Dropout(self.hid_drop)
+        # self.bias = config['COMPGCNARGS']['BIAS']
 
         # TODO: Will raise error since bias is not defined.
-        raise AssertionError("self.bias is not defined.")
+        # raise AssertionError("self.bias is not defined.")
 
     def forward(self, sub, rel):
         sub_emb, rel_emb, all_ent = self.forward_base(sub, rel, self.drop, self.drop)
@@ -861,34 +864,36 @@ class CompGCNConvE(CompQGCNEncoder):
         self.feat_drop = config['COMPGCNARGS']['FEAT_DROP']
         self.n_filters = config['COMPGCNARGS']['N_FILTERS']
         self.kernel_sz = config['COMPGCNARGS']['KERNEL_SZ']
-        self.bias = config['COMPGCNARGS']['BIAS']
+        # self.bias = config['COMPGCNARGS']['BIAS']
+        self.k_w = config['COMPGCNARGS']['K_W']
+        self.k_h = config['COMPGCNARGS']['K_H']
 
         self.bn0 = torch.nn.BatchNorm2d(1)
-        self.bn1 = torch.nn.BatchNorm2d(self.p.num_filt)
-        self.bn2 = torch.nn.BatchNorm1d(self.p.embed_dim)
+        self.bn1 = torch.nn.BatchNorm2d(self.n_filters)
+        self.bn2 = torch.nn.BatchNorm1d(self.emb_dim)
 
-        self.hidden_drop = torch.nn.Dropout(self.p.hid_drop)
-        self.hidden_drop2 = torch.nn.Dropout(self.p.hid_drop2)
-        self.feature_drop = torch.nn.Dropout(self.p.feat_drop)
-        self.m_conv1 = torch.nn.Conv2d(1, out_channels=self.p.num_filt,
-                                       kernel_size=(self.p.ker_sz, self.p.ker_sz), stride=1,
-                                       padding=0, bias=self.p.bias)
+        self.hidden_drop = torch.nn.Dropout(self.hid_drop)
+        self.hidden_drop2 = torch.nn.Dropout(self.hid_drop2)
+        self.feature_drop = torch.nn.Dropout(self.feat_drop)
+        self.m_conv1 = torch.nn.Conv2d(1, out_channels=self.n_filters,
+                                       kernel_size=(self.kernel_sz, self.kernel_sz), stride=1,
+                                       padding=0, bias=config['COMPGCNARGS']['BIAS'])
 
-        flat_sz_h = int(2 * self.p.k_w) - self.p.ker_sz + 1
-        flat_sz_w = self.p.k_h - self.p.ker_sz + 1
-        self.flat_sz = flat_sz_h * flat_sz_w * self.p.num_filt
-        self.fc = torch.nn.Linear(self.flat_sz, self.p.embed_dim)
+        flat_sz_h = int(2 * self.k_w) - self.kernel_sz + 1
+        flat_sz_w = self.k_h - self.kernel_sz + 1
+        self.flat_sz = flat_sz_h * flat_sz_w * self.n_filters
+        self.fc = torch.nn.Linear(self.flat_sz, self.emb_dim)
 
     def concat(self, e1_embed, rel_embed):
-        e1_embed = e1_embed.view(-1, 1, self.p.embed_dim)
-        rel_embed = rel_embed.view(-1, 1, self.p.embed_dim)
+        e1_embed = e1_embed.view(-1, 1, self.emb_dim)
+        rel_embed = rel_embed.view(-1, 1, self.emb_dim)
         stack_inp = torch.cat([e1_embed, rel_embed], 1)
-        stack_inp = torch.transpose(stack_inp, 2, 1).reshape((-1, 1, 2 * self.p.k_w, self.p.k_h))
+        stack_inp = torch.transpose(stack_inp, 2, 1).reshape((-1, 1, 2 * self.k_w, self.k_h))
         return stack_inp
 
     def forward(self, sub, rel):
-        sub_emb, rel_emb, all_ent = self.forward_base(sub, rel, self.hidden_drop,
-                                                      self.feature_drop)
+        sub_emb, rel_emb, all_ent = self.forward_base(sub, rel, self.hid_drop,
+                                                      self.feat_drop)
         stk_inp = self.concat(sub_emb, rel_emb)
         x = self.bn0(stk_inp)
         x = self.m_conv1(x)
@@ -915,7 +920,7 @@ class CompQGCNConvLayer(MessagePassing):
                  config=None):
         super(self.__class__, self).__init__()
 
-        self.p = params
+        self.p = config
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.num_rels = num_rels
@@ -932,10 +937,10 @@ class CompQGCNConvLayer(MessagePassing):
         self.loop_rel = get_param((1, in_channels))  # (1,100)
         self.loop_ent = get_param((1, in_channels))  # new
 
-        self.drop = torch.nn.Dropout(self.p.dropout)
+        self.drop = torch.nn.Dropout(self.p['COMPGCNARGS']['GCN_DROP'])
         self.bn = torch.nn.BatchNorm1d(out_channels)
 
-        if self.p.bias: self.register_parameter('bias', Parameter(
+        if self.p['COMPGCNARGS']['BIAS']: self.register_parameter('bias', Parameter(
             torch.zeros(out_channels)))
 
     def forward(self, x, edge_index, edge_type, rel_embed, qualifier_ent, qualifier_rel):

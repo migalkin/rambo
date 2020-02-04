@@ -64,7 +64,7 @@ DEFAULT_CONFIG = {
     'LEARNING_RATE': 0.001,
     'MARGIN_LOSS': 5,
     'MAX_QPAIRS': 43,
-    'MODEL_NAME': 'ConvKB',
+    'MODEL_NAME': 'compgcn_conve',
     'NARY_EVAL': False,
     'NEGATIVE_SAMPLING_PROBS': [0.3, 0.0, 0.2, 0.5],
     'NEGATIVE_SAMPLING_TIMES': 10,
@@ -91,15 +91,21 @@ KBGATARGS = {
 COMPGCNARGS = {
     'LAYERS': 2,
     'N_BASES': 0,
-    # 'GCN_DIM': ??,
-    # 'HID_DROP': ??,
+    'GCN_DIM': 200,
+    'GCN_DROP': 0.1,
+    'HID_DROP': 0.3,
+    'BIAS': False,
+
+    # For TransE
+    'GAMMA': 40.0,
 
     # For ConvE Only
-    # 'HID_DROP2': ??,
-    # 'FEAT_DROP': ??,
-    # 'N_FILTERS': ??,
-    # 'KERNEL_SZ': ??,
-    # 'BIAS': ??,
+    'HID_DROP2': 0.3,
+    'FEAT_DROP': 0.3,
+    'N_FILTERS': 200,
+    'KERNEL_SZ': 7,
+    'K_W': 10 ,
+    'K_H': 20
 }
 
 DEFAULT_CONFIG['KBGATARGS'] = KBGATARGS
@@ -215,11 +221,11 @@ if __name__ == "__main__":
     elif config['MODEL_NAME'].lower().startswith('compgcn'):
         # TODO
         if config['MODEL_NAME'].lower().endswith('transe'):
-            model = CompGCNTransE
+            model = CompGCNTransE(train_data_gcn, config)
         elif config['MODEL_NAME'].lower().endswith('conve'):
-            ...
+            model = CompGCNConvE(train_data_gcn, config)
         elif config['MODEL_NAME'].lower().endswith('distmult'):
-            ...
+            model = CompGCNConvE(train_data_gcn, config)
         else:
             raise BadParameters(f"Unknown Model Name {config['MODEL_NAME']}")
     else:
@@ -315,7 +321,7 @@ if __name__ == "__main__":
         raise NotImplementedError
 
     if config['MODEL_NAME'].lower().startswith('compgcn'):
-
+        print("Later alligator")
         ...
 
 

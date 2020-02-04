@@ -1305,9 +1305,9 @@ class DataManager(object):
         except KeyError:
             raise AssertionError("Function called too soon. Num relations not found.")
 
-        edge_index, edge_type = np.zeros((2, len(raw) * 2)), np.zeros((len(raw) * 2))
-        qual_rel = np.zeros(((len(raw[0]) - 3) // 2, len(raw) * 2))
-        qual_ent = np.zeros(((len(raw[0]) - 3) // 2, len(raw) * 2))
+        edge_index, edge_type = np.zeros((2, len(raw) * 2), dtype='int32'), np.zeros((len(raw) * 2), dtype='int32')
+        qual_rel = np.zeros(((len(raw[0]) - 3) // 2, len(raw) * 2), dtype='int32')
+        qual_ent = np.zeros(((len(raw[0]) - 3) // 2, len(raw) * 2), dtype='int32')
 
         # Add actual data
         for i, data in enumerate(raw):
