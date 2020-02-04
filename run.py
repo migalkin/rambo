@@ -225,7 +225,7 @@ if __name__ == "__main__":
         elif config['MODEL_NAME'].lower().endswith('conve'):
             model = CompGCNConvE(train_data_gcn, config)
         elif config['MODEL_NAME'].lower().endswith('distmult'):
-            model = CompGCNConvE(train_data_gcn, config)
+            model = CompGCNDistMult(train_data_gcn, config)
         else:
             raise BadParameters(f"Unknown Model Name {config['MODEL_NAME']}")
     else:
