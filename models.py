@@ -757,10 +757,10 @@ class CompQGCNEncoder(CompGCNBase):
         super().__init__(config)
 
         # Storing the KG
-        self.edge_index = graph_repr['edge_index']
-        self.edge_type = graph_repr['edge_type']
-        self.qual_rel = graph_repr['qual_rel']
-        self.qual_ent = graph_repr['qual_ent']
+        self.edge_index = torch.tensor(graph_repr['edge_index'], dtype=torch.long)
+        self.edge_type = torch.tensor(graph_repr['edge_type'], dtype=torch.long)
+        self.qual_rel = torch.tensor(graph_repr['qual_rel'], dtype=torch.long)
+        self.qual_ent = torch.tensor(graph_repr['qual_ent'], dtype=torch.long)
 
         self.gcn_dim = self.emb_dim if self.n_layer == 1 else self.gcn_dim
         self.init_embed = get_param((self.num_ent, self.emb_dim))
@@ -989,7 +989,7 @@ class CompQGCNConvLayer(MessagePassing):
 
         out = self.drop(in_res) * (1 / 3) + self.drop(out_res) * (1 / 3) + loop_res * (1 / 3)
 
-        if self.p.bias:
+        if self.p['COMPGCNARGS']['BIAS']:
             out = out + self.bias
         out = self.bn(out)
 
@@ -997,11 +997,11 @@ class CompQGCNConvLayer(MessagePassing):
         return self.act(out), torch.matmul(rel_embed, self.w_rel)[:-1]
 
     def rel_transform(self, ent_embed, rel_embed):
-        if self.p.opn == 'corr':
+        if self.p['COMPGCNARGS']['OPN'] == 'corr':
             trans_embed = ccorr(ent_embed, rel_embed)
-        elif self.p.opn == 'sub':
+        elif self.p['COMPGCNARGS']['OPN'] == 'sub':
             trans_embed = ent_embed - rel_embed
-        elif self.p.opn == 'mult':
+        elif self.p['COMPGCNARGS']['OPN'] == 'mult':
             trans_embed = ent_embed * rel_embed
         else:
             raise NotImplementedError
@@ -1078,7 +1078,7 @@ class CompQGCNConvLayer(MessagePassing):
             rel_emb = self.update_rel_emb_with_qualifier(ent_embed, rel_embed, qualifier_ent,
                                                          qualifier_rel, edge_type)  #
         else:
-            torch.index_select(rel_embed, 0, edge_type)
+            rel_emb = torch.index_select(rel_embed, 0, edge_type)
         xj_rel = self.rel_transform(x_j, rel_emb)
         out = torch.mm(xj_rel, weight)
 
