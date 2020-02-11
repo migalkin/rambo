@@ -802,11 +802,11 @@ class CompQGCNEncoder(CompGCNBase):
                           qualifier_rel=self.qual_rel)
 
         x = drop1(x)
-        x, r = self.conv2(x=self.init_embed, edge_index=self.edge_index,
+        x, r = self.conv2(x=x, edge_index=self.edge_index,
                           edge_type=self.edge_type, rel_embed=r,
                           qualifier_ent=self.qual_ent,
-                          qualifier_rel=self.qual_rel) if self.gcn_layer == 2 else (x, r)
-        x = drop2(x) if self.gcn_layer == 2 else x
+                          qualifier_rel=self.qual_rel) if self.n_layer == 2 else (x, r)
+        x = drop2(x) if self.n_layer == 2 else x
 
         sub_emb = torch.index_select(x, 0, sub)
         rel_emb = torch.index_select(r, 0, rel)
@@ -888,12 +888,13 @@ class CompGCNConvE(CompQGCNEncoder):
         e1_embed = e1_embed.view(-1, 1, self.emb_dim)
         rel_embed = rel_embed.view(-1, 1, self.emb_dim)
         stack_inp = torch.cat([e1_embed, rel_embed], 1)
+        # TODO check that reshaping against the batch size - apparently emb_dim  = k_w * k_h
         stack_inp = torch.transpose(stack_inp, 2, 1).reshape((-1, 1, 2 * self.k_w, self.k_h))
         return stack_inp
 
     def forward(self, sub, rel):
-        sub_emb, rel_emb, all_ent = self.forward_base(sub, rel, self.hid_drop,
-                                                      self.feat_drop)
+        sub_emb, rel_emb, all_ent = self.forward_base(sub, rel, self.hidden_drop,
+                                                      self.feature_drop)
         stk_inp = self.concat(sub_emb, rel_emb)
         x = self.bn0(stk_inp)
         x = self.m_conv1(x)
