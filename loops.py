@@ -491,3 +491,94 @@ def training_loop_neighborhood(epochs: int,
            train_hits_3_bnchmk, train_hits_5_bnchmk, train_hits_10_bnchmk, \
            valid_acc, valid_mrr, \
            valid_hits_3, valid_hits_5, valid_hits_10
+
+
+def training_loop_gcn(epochs: int,
+                      data: dict,
+                      opt: torch.optim,
+                      train_fn: Callable,
+                      neg_generator: Corruption,
+                      device: torch.device = torch.device('cpu'),
+                      data_fn: Callable = dataiters.SimplestSampler,
+                      eval_fn_trn: Callable = default_eval,
+                      val_testbench: Callable = default_eval,
+                      trn_testbench: Callable = default_eval,
+                      eval_every: int = 1,
+                      log_wandb: bool = True,
+                      run_trn_testbench: bool = True,
+                      savedir: str = None,
+                      save_content: Dict[str, list] = None) -> (list, list, list):
+    """
+            A fn which can be used to train a language model.
+
+            The model doesn't need to be an nn.Module,
+                but have an eval (optional), a train and a predict function.
+
+            Data should be a dict like so:
+                {"train":{"x":np.arr, "y":np.arr}, "val":{"x":np.arr, "y":np.arr} }
+
+            Train_fn must return both loss and y_pred
+
+            :param epochs: integer number of epochs
+            :param data: a dictionary which looks like {'train': train data}
+            :param opt: torch optimizer
+            :param train_fn: a fn which is/can call forward of a nn module
+            :param neg_generator: A corruption instance which can be used to corrupt one batch of pos data
+            :param device: torch.device for making tensors
+            :param data_fn: Something that can make iterators out of training data (think mytorch samplers)
+            :param eval_fn_trn: Function which can take a bunch of pos, neg scores and give out some metrics
+            :param val_testbench: Function call to see generate all negs for all pos and get metrics in valid set
+            :param trn_testbench:Function call to see generate all negs for all pos and get metrics in train set
+            :param eval_every: int which dictates after how many epochs should run testbenches
+            :param log_wandb: bool which dictates whether we log things with wandb
+            :param run_trn_testbench: bool which dictates whether we run testbench on train set
+            :param savedir: str of the dir where the models should be saved. None, if nothing should be saved.
+            :param save_content: data expected like {'torch_stuff':[], 'json_stuff':[]}
+                    (see docstring mytorch.utils.goodies.mt_save)
+        """
+
+    train_loss = []
+    train_acc = []
+    valid_acc = []
+    valid_mrr = []
+    valid_mr = []
+    valid_hits_3, valid_hits_5, valid_hits_10 = [], [], []
+    train_acc_bnchmk = []
+    train_mrr_bnchmk = []
+    train_mr_bnchmk = []
+    train_hits_3_bnchmk, train_hits_5_bnchmk, train_hits_10_bnchmk = [], [], []
+    lrs = []
+
+    # Epoch level
+    for e in range(epochs):
+
+        per_epoch_loss = []
+        per_epoch_tr_acc = []
+
+        # Train
+        with Timer() as timer:
+
+            # Make data
+            trn_dl = data_fn(data['train'])
+            train_fn.train()
+
+            for batch in tqdm(trn_dl):
+                opt.zero_grad()
+
+                sub, rel, obj, label = batch[:, 0], batch[:, 1], batch[:, 2], torch.ones((batch.shape[0], 1), dtype=torch.float)
+                _sub = torch.tensor(sub, dtype=torch.long, device=device)
+                _rel = torch.tensor(rel, dtype=torch.long, device=device)
+
+                pred = train_fn(_sub, _rel)
+                loss = train_fn.loss(pred, label)
+
+                per_epoch_loss.append(loss.item())
+
+                loss.backward()
+                opt.step()
+
+        # Log this stuff
+        train_acc.append(np.mean(per_epoch_tr_acc))
+        train_loss.append(np.mean(per_epoch_loss))
+
+    pass

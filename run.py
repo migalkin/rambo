@@ -24,7 +24,7 @@ from evaluation import acc, mrr, mr, hits_at
 from models import TransE, ConvKB, KBGat, CompGCNConvE, CompGCNDistMult, CompGCNTransE
 from corruption import Corruption
 from sampler import SimpleSampler, NeighbourhoodSampler
-from loops import training_loop, training_loop_neighborhood
+from loops import training_loop, training_loop_neighborhood, training_loop_gcn
 
 """
     CONFIG Things
@@ -91,10 +91,11 @@ KBGATARGS = {
 COMPGCNARGS = {
     'LAYERS': 2,
     'N_BASES': 0,
-    'GCN_DIM': 200,
+    'GCN_DIM': 80,
     'GCN_DROP': 0.1,
     'HID_DROP': 0.3,
     'BIAS': False,
+    'OPN': 'corr',
 
     # For TransE
     'GAMMA': 40.0,
@@ -104,8 +105,8 @@ COMPGCNARGS = {
     'FEAT_DROP': 0.3,
     'N_FILTERS': 200,
     'KERNEL_SZ': 7,
-    'K_W': 10 ,
-    'K_H': 20
+    'K_W': 5 , # def 10
+    'K_H': 10 # def 20
 }
 
 DEFAULT_CONFIG['KBGATARGS'] = KBGATARGS
@@ -281,6 +282,8 @@ if __name__ == "__main__":
                                                 filtered=True, n_ents=n_entities,
                                                 excluding_entities=ent_excluded_from_corr,
                                                 trim=0.01)
+    # evaluation_valid = None
+    # evaluation_train = None
 
     # Saving stuff
     if config['SAVE']:
@@ -302,8 +305,8 @@ if __name__ == "__main__":
         "device": config['DEVICE'],
         "data_fn": partial(SimpleSampler, bs=config["BATCH_SIZE"]),
         "eval_fn_trn": evaluate_pointwise,
-        "val_testbench": evaluation_valid.run,
-        "trn_testbench": evaluation_train.run,
+        "val_testbench": evaluation_valid.run if evaluation_valid else None,
+        "trn_testbench": evaluation_train.run if evaluation_train else None,
         "eval_every": config['EVAL_EVERY'],
         "log_wandb": config['WANDB'],
         "run_trn_testbench": config['RUN_TESTBENCH_ON_TRAIN'],
@@ -321,8 +324,7 @@ if __name__ == "__main__":
         raise NotImplementedError
 
     if config['MODEL_NAME'].lower().startswith('compgcn'):
-        print("Later alligator")
-        ...
+        training_loop = training_loop_gcn
 
 
 
