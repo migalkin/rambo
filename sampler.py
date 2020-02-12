@@ -35,6 +35,74 @@ class SimpleSampler:
         return _pos
 
 
+class MultiClassSampler:
+    """
+        The sampler for the multi-class BCE training (instead of pointwise margin ranking)
+        The output is a batch of shape (bs, num_entities)
+        Each row contains 1s (or lbl-smth values) if the triple exists in the training set
+        So given the triples (0, 0, 1), (0, 0, 4) the label vector will be [0, 1, 0, 0, 1]
+
+    """
+    def __init__(self, data: Union[np.array, list], n_entities: int, lbl_smooth: float = 0.0, bs: int = 64):
+        self.bs = bs
+        self.data = data
+        self.n_entities = n_entities
+        self.lbl_smooth = lbl_smooth
+
+        self.build_index()
+        self.shuffle()
+
+    def shuffle(self):
+        npr.shuffle(self.data)
+
+    def build_index(self):
+        self.index = defaultdict(list)
+
+        for statement in self.data:
+            s, r, quals = statement[0], statement[1], statement[3:] if self.data.shape[1] >= 3 else None
+            self.index[(s, r, *quals)].append(statement[2])
+
+    def get_label(self, statements):
+        """
+
+        :param statements: array of shape (bs, seq_len) like (64, 43)
+        :return: array of shape (bs, num_entities) like (64, 49113)
+
+        for each line we search in the index for the correct label and assign 1 in the resulting vector
+        """
+        y = np.zeros((self.bs, self.n_entities), dtype=np.float32)
+
+
+        for i, s in enumerate(statements):
+            s, r, quals = s[0], s[1], s[3:] if self.data.shape[1] >= 3 else None
+            lbls = self.index[(s, r, *quals)]
+            y[i, lbls] = 1.0
+
+        if self.lbl_smooth != 0.0:
+            y = (1.0 - self.lbl_smooth)*y + (1.0 / self.n_entities)
+
+        return y
+
+    def __len__(self):
+        return self.data.shape[0] // self.bs
+
+    def __iter__(self):
+        self.i = 0
+        return self
+
+    def __next__(self):
+        """
+            Each time, take `bs` pos
+        """
+        if self.i >= self.data.shape[0]:
+            print("Should stop")
+            raise StopIteration
+
+        _statements = self.data[self.i: min(self.i + self.bs, len(self.data) - 1)]
+        _labels = self.get_label(_statements)
+        self.i = min(self.i + self.bs, self.data.shape[0])
+        return _statements, _labels
+
 # Make data iterator -> Modify Simple Iterator from mytorch
 class QuintRankingSampler:
     """

@@ -23,7 +23,7 @@ from evaluation import EvaluationBench, EvaluationBenchArity, evaluate_pointwise
 from evaluation import acc, mrr, mr, hits_at
 from models import TransE, ConvKB, KBGat, CompGCNConvE, CompGCNDistMult, CompGCNTransE
 from corruption import Corruption
-from sampler import SimpleSampler, NeighbourhoodSampler
+from sampler import SimpleSampler, NeighbourhoodSampler, MultiClassSampler
 from loops import training_loop, training_loop_neighborhood, training_loop_gcn
 
 """
@@ -79,7 +79,8 @@ DEFAULT_CONFIG = {
     'SCORING_FUNCTION_NORM': 1,
     'STATEMENT_LEN': -1,
     'USE_TEST': False,
-    'WANDB': False
+    'WANDB': False,
+    'LABEL_SMOOTHING': 0.0
 }
 
 KBGATARGS = {
@@ -325,6 +326,10 @@ if __name__ == "__main__":
 
     if config['MODEL_NAME'].lower().startswith('compgcn'):
         training_loop = training_loop_gcn
+        args['data_fn'] = partial(MultiClassSampler,
+                                  n_entities=config['NUM_ENTITIES'],
+                                  lbl_smooth=config['LABEL_SMOOTHING'],
+                                  bs=config['BATCH_SIZE'])
 
 
 
