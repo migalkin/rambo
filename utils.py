@@ -364,16 +364,19 @@ def combine(*args: Union[np.ndarray, list]):
     """
 
     # Case A, C
-    if len(args) == 1 or type(args) is dict:
+    if len(args) == 1 and type(args[0]) is not dict:
+        return np.array(args[0])
+
+    if len(args) == 1 and type(args) is dict:
         return args
 
     # Case B
-    if type(args) is list and type(args[0]) is np.ndarray:
+    if type(args) is tuple and (type(args[0]) is np.ndarray or type(args[0]) is list):
         # Expected shape will be a x n, b x n. Simple concat will do.
         return np.concatenate(args)
 
     # Case D
-    if type(args) is list and type(args[0]) is dict:
+    if type(args) is tuple and type(args[0]) is dict:
         keys = args[0].keys()
         combined = {}
         for k in keys:
