@@ -879,6 +879,10 @@ class CompGCNConvE(CompQGCNEncoder):
                                        kernel_size=(self.kernel_sz, self.kernel_sz), stride=1,
                                        padding=0, bias=config['COMPGCNARGS']['BIAS'])
 
+        assert self.emb_dim == self.k_w * self.k_h, "Incorrect combination of conv params and emb dim " \
+                                                    " ConvE decoder will not work properly, " \
+                                                    " should be emb_dim == k_w * k_h"
+
         flat_sz_h = int(2 * self.k_w) - self.kernel_sz + 1
         flat_sz_w = self.k_h - self.kernel_sz + 1
         self.flat_sz = flat_sz_h * flat_sz_w * self.n_filters
