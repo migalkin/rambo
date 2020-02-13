@@ -788,6 +788,9 @@ class CompQGCNEncoder(CompGCNBase):
             self.conv2 = CompQGCNConvLayer(self.gcn_dim, self.emb_dim, self.num_rel, act=self.act,
                                            config=config) if self.n_layer == 2 else None
 
+        if self.conv1: self.conv1.to(self.device)
+        if self.conv2: self.conv2.to(self.device)
+
         self.register_parameter('bias', Parameter(torch.zeros(self.num_ent)))
 
     def forward_base(self, sub, rel, drop1, drop2):
@@ -966,11 +969,9 @@ class CompQGCNConvLayer(MessagePassing):
                                                           qualifier_rel[:, num_edges:]
 
         # Self edges between all the nodes
-        self.loop_index = torch.stack([torch.arange(num_ent), torch.arange(num_ent)]).to(
-            self.device)
+        self.loop_index = torch.stack([torch.arange(num_ent), torch.arange(num_ent)]).to(self.device)
         self.loop_type = torch.full((num_ent,), rel_embed.size(0) - 1,
-                                    dtype=torch.long).to(
-            self.device)  # if rel meb is 500, the index of the self emb is
+                                    dtype=torch.long).to(self.device)  # if rel meb is 500, the index of the self emb is
         # 499 .. which is just added here
 
         self.in_norm = self.compute_norm(self.in_index, num_ent)
