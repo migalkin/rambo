@@ -346,7 +346,7 @@ def create_neighbourhood_hashes(data: Dict) -> (Dict, Dict):
     return hop1, hop2
 
 
-def combine(*args: Union[np.ndarray, list]):
+def combine(*args: Union[np.ndarray, list, tuple]):
     """
         Used to semi-intelligently combine data splits
 

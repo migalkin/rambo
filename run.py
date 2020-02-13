@@ -221,7 +221,7 @@ if __name__ == "__main__":
             pretrained_models = None
         model = KBGat(config, pretrained_models)
     elif config['MODEL_NAME'].lower().startswith('compgcn'):
-        # TODO
+        # TODO when USE_TEST is true training data should include the validation set as well
         if config['MODEL_NAME'].lower().endswith('transe'):
             model = CompGCNTransE(train_data_gcn, config)
         elif config['MODEL_NAME'].lower().endswith('conve'):
@@ -326,11 +326,15 @@ if __name__ == "__main__":
 
     if config['MODEL_NAME'].lower().startswith('compgcn'):
         training_loop = training_loop_gcn
-        args['data_fn'] = partial(MultiClassSampler,
-                                  n_entities=config['NUM_ENTITIES'],
-                                  lbl_smooth=config['LABEL_SMOOTHING'],
-                                  bs=config['BATCH_SIZE'])
-
+        sampler = MultiClassSampler(data= args['data']['train'],
+                                    n_entities=config['NUM_ENTITIES'],
+                                    lbl_smooth=config['LABEL_SMOOTHING'],
+                                    bs=config['BATCH_SIZE'])
+        # args['data_fn'] = partial(MultiClassSampler,
+        #                           n_entities=config['NUM_ENTITIES'],
+        #                           lbl_smooth=config['LABEL_SMOOTHING'],
+        #                           bs=config['BATCH_SIZE'])
+        args['data_fn'] = sampler.reset
 
 
 

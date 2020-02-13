@@ -62,6 +62,17 @@ class MultiClassSampler:
             s, r, quals = statement[0], statement[1], statement[3:] if self.data.shape[1] >= 3 else None
             self.index[(s, r, *quals)].append(statement[2])
 
+    def reset(self, *ignore_args):
+        """
+            Reset the pointers of the iterators at the end of an epoch
+        :return:
+        """
+        # do something
+        self.i = 0
+        self.shuffle()
+
+        return self
+
     def get_label(self, statements):
         """
 
@@ -74,7 +85,7 @@ class MultiClassSampler:
 
 
         for i, s in enumerate(statements):
-            s, r, quals = s[0], s[1], s[3:] if self.data.shape[1] >= 3 else None
+            s, r, quals = s[0], s[1], s[3:] if self.data.shape[1] > 3 else None
             lbls = self.index[(s, r, *quals)]
             y[i, lbls] = 1.0
 
