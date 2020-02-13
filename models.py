@@ -756,15 +756,17 @@ class CompQGCNEncoder(CompGCNBase):
     def __init__(self, graph_repr: Dict[str, np.ndarray], config: dict):
         super().__init__(config)
 
+        self.device = config['DEVICE']
+
         # Storing the KG
-        self.edge_index = torch.tensor(graph_repr['edge_index'], dtype=torch.long)
-        self.edge_type = torch.tensor(graph_repr['edge_type'], dtype=torch.long)
-        self.qual_rel = torch.tensor(graph_repr['qual_rel'], dtype=torch.long)
-        self.qual_ent = torch.tensor(graph_repr['qual_ent'], dtype=torch.long)
+        self.edge_index = torch.tensor(graph_repr['edge_index'], dtype=torch.long, device=self.device)
+        self.edge_type = torch.tensor(graph_repr['edge_type'], dtype=torch.long, device=self.device)
+        self.qual_rel = torch.tensor(graph_repr['qual_rel'], dtype=torch.long, device=self.device)
+        self.qual_ent = torch.tensor(graph_repr['qual_ent'], dtype=torch.long, device=self.device)
 
         self.gcn_dim = self.emb_dim if self.n_layer == 1 else self.gcn_dim
         self.init_embed = get_param((self.num_ent, self.emb_dim))
-        self.device = config['DEVICE']
+
 
         # What about bases?
         if self.n_bases > 0:
