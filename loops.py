@@ -581,7 +581,8 @@ def training_loop_gcn(epochs: int,
                 opt.step()
 
         # Log this stuff
-        train_acc.append(np.mean(per_epoch_tr_acc))
+        print(f"[Epoch: {e} ] Loss: {np.mean(per_epoch_loss)}")
+        #train_acc.append(np.mean(per_epoch_tr_acc))
         train_loss.append(np.mean(per_epoch_loss))
 
     pass

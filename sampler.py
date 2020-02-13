@@ -93,7 +93,8 @@ class MultiClassSampler:
 
         for each line we search in the index for the correct label and assign 1 in the resulting vector
         """
-        y = np.zeros((self.bs, self.n_entities), dtype=np.float32)
+        # statement shape for correct processing of the very last batch which size might be less than self.bs
+        y = np.zeros((statements.shape[0], self.n_entities), dtype=np.float32)
 
 
         for i, s in enumerate(statements):
