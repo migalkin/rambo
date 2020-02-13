@@ -80,7 +80,8 @@ DEFAULT_CONFIG = {
     'STATEMENT_LEN': -1,
     'USE_TEST': False,
     'WANDB': False,
-    'LABEL_SMOOTHING': 0.0
+    'LABEL_SMOOTHING': 0.0,
+    'SAMPLER_W_QUALIFIERS': False
 }
 
 KBGATARGS = {
@@ -329,7 +330,8 @@ if __name__ == "__main__":
         sampler = MultiClassSampler(data= args['data']['train'],
                                     n_entities=config['NUM_ENTITIES'],
                                     lbl_smooth=config['LABEL_SMOOTHING'],
-                                    bs=config['BATCH_SIZE'])
+                                    bs=config['BATCH_SIZE'],
+                                    with_q=config['SAMPLER_W_QUALIFIERS'])
         # args['data_fn'] = partial(MultiClassSampler,
         #                           n_entities=config['NUM_ENTITIES'],
         #                           lbl_smooth=config['LABEL_SMOOTHING'],

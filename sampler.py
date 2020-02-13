@@ -42,12 +42,23 @@ class MultiClassSampler:
         Each row contains 1s (or lbl-smth values) if the triple exists in the training set
         So given the triples (0, 0, 1), (0, 0, 4) the label vector will be [0, 1, 0, 0, 1]
 
+
     """
-    def __init__(self, data: Union[np.array, list], n_entities: int, lbl_smooth: float = 0.0, bs: int = 64):
+    def __init__(self, data: Union[np.array, list], n_entities: int,
+                 lbl_smooth: float = 0.0, bs: int = 64, with_q: bool = False):
+        """
+
+        :param data: data as an array of statements of STATEMENT_LEN, e.g., [0,0,0] or [0,1,0,2,4]
+        :param n_entities: total number of entities
+        :param lbl_smooth: whether to apply label smoothing used later in the BCE loss
+        :param bs: batch size
+        :param with_q: whether indexing will consider qualifiers or not, default: FALSE
+        """
         self.bs = bs
         self.data = data
         self.n_entities = n_entities
         self.lbl_smooth = lbl_smooth
+        self.with_q = with_q
 
         self.build_index()
         self.shuffle()
@@ -60,7 +71,8 @@ class MultiClassSampler:
 
         for statement in self.data:
             s, r, quals = statement[0], statement[1], statement[3:] if self.data.shape[1] >= 3 else None
-            self.index[(s, r, *quals)].append(statement[2])
+            self.index[(s, r, *quals)].append(statement[2]) if self.with_q else self.index[(s, r)].append(statement[2])
+
 
     def reset(self, *ignore_args):
         """
@@ -86,7 +98,7 @@ class MultiClassSampler:
 
         for i, s in enumerate(statements):
             s, r, quals = s[0], s[1], s[3:] if self.data.shape[1] > 3 else None
-            lbls = self.index[(s, r, *quals)]
+            lbls = self.index[(s, r, *quals)] if self.with_q else self.index[(s,r)]
             y[i, lbls] = 1.0
 
         if self.lbl_smooth != 0.0:
