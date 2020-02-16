@@ -5,6 +5,7 @@ import types
 # Local
 from utils import *
 from corruption import Corruption
+from sampler import EvalSampler
 
 
 class EvaluationBench:
@@ -129,6 +130,197 @@ class EvaluationBench:
                         metric_across_positions.append(_metrics)
 
                     metrics.append(np.mean(metric_across_positions, axis=0))
+        # Spruce up the summary with more information
+        time_taken = timer.interval
+        metrics = self._summarize_metrics_(metrics)
+        summary = {'metrics': metrics, 'time_taken': time_taken, 'data_length': len(self.data_eval),
+                   'max_len_data': self.max_len_data, 'filtered': self.filtered}
+
+        self.summarize_run(summary)
+
+        return summary
+
+
+class EvaluationBenchGNNMultiClass:
+    """
+        Sampler which for each true triple,
+            |-> compares an entity ar CORRUPTION_POSITITON with **all** possible entities, and reports metrics
+    """
+
+    def __init__(self,
+                 data: Dict[str, Union[List[int], np.array]],
+                 model: nn.Module,
+                 n_ents: int,
+                 excluding_entities: Union[int, np.array],
+                 config: Dict,
+                 bs: int,
+                 metrics: list,
+                 filtered: bool = False,
+                 trim: float = None,
+                 positions: List[int] = None):
+        """
+            :param data: {'index': list/iter of positive triples, 'eval': list/iter of positive triples}.
+            Np array are appreciated
+            :param model: the nn module we're testing
+            :param excluding_entities: either an int (indicating n_entities), or a array of possible negative entities
+            :param bs: anything under 256 is shooting yourself in the foot.
+            :param metrics: a list of callable (from methods in this file) we call to get a metric
+            :param filtered: if you want corrupted triples checked.
+            :param trim: We could drop the 'eval' data, to speed things up
+            :param positions: which positions should we inflect.
+            """
+        self.bs, self.filtered = bs, filtered
+        self.model = model
+        self.data_eval = data['eval']
+        self.metrics = metrics
+
+        # build an index of train/val/test data
+        self.data = data
+        self.config = config
+        self.max_len_data = max(data['index'].shape[1], data['eval'].shape[1])
+        self.corruption_positions = list(range(0, self.max_len_data, 2)) if not positions else positions
+        self.build_index()
+
+        if trim is not None:
+            assert trim <= 1.0, "Trim ratio can not be more than 1.0"
+            self.data_eval = np.random.permutation(self.data_eval)[:int(trim * len(self.data_eval))]
+
+    def build_index(self):
+        """
+        the index is comprised of both INDEX and EVAL parts of the dataset
+        essentially, merging train + val + test for true triple labels
+        TODO think what to do with the index when we have >2 CORRUPTION POSITIONS
+        :return: self.index with train/val/test entries
+        """
+        self.index = defaultdict(list)
+        if len(self.corruption_positions) > 2:
+            raise NotImplementedError
+
+        for statement in np.concatenate((self.data['index'], self.data['eval']), axis=0):
+            s, r, o, quals = statement[0], statement[1], statement[2], statement[3:] if self.data['eval'].shape[1] >= 3 else None
+            reci_rel = r + self.config['NUM_RELATIONS']
+            self.index[(s, r, *quals)].append(o) if self.config['SAMPLER_W_QUALIFIERS'] else self.index[(s, r)].append(o)
+            self.index[(o, reci_rel, *quals)].append(s) if self.config['SAMPLER_W_QUALIFIERS'] else self.index[(o, reci_rel)].append(s)
+
+
+
+    def get_label(self, statements):
+        """
+
+        :param statements: array of shape (bs, seq_len) like (64, 43)
+        :return: array of shape (bs, num_entities) like (64, 49113)
+
+        for each line we search in the index for the correct label and assign 1 in the resulting vector
+        """
+        # statement shape for correct processing of the very last batch which size might be less than self.bs
+        y = np.zeros((statements.shape[0], self.config['NUM_ENTITIES']), dtype=np.float32)
+
+
+        for i, s in enumerate(statements):
+            s, r, quals = s[0], s[1], s[3:] if self.data_eval.shape[1] > 3 else None
+            lbls = self.index[(s, r, *quals)] if self.config['SAMPLER_W_QUALIFIERS'] else self.index[(s,r)]
+            y[i, lbls] = 1.0
+
+        return y
+
+    def reset(self):
+        """ Call when you wanna run again but not change hashes etc """
+        raise NotImplementedError
+
+    def _compute_metric_(self, scores: np.array) -> List[Union[float, np.float]]:
+        """ See what metrics are to be computed, and compute them."""
+        return [_metric(scores) for _metric in self.metrics]
+
+    def _summarize_metrics_(self, accumulated_metrics: np.array) -> np.array:
+        """
+            Aggregate metrics across time. Accepts np array of (len(self.data_eval), len(self.metrics))
+        """
+        mean = np.mean(accumulated_metrics, axis=0)
+        summary = {}
+        for i, _metric in enumerate(self.metrics):
+            if _metric.__class__ is partial:
+                summary[_metric.func.__name__ + ' ' + str(_metric.keywords['k'])] = mean[i]
+            else:
+                summary[_metric.__name__] = mean[i]
+
+        return summary
+
+    @staticmethod
+    def summarize_run(summary: dict):
+        """ Nicely print what just went down """
+        print(f"This run over {summary['data_length']} datapoints took "
+              f"%(time).3f min" % {'time': summary['time_taken'] / 60.0})
+        print("---------\n")
+        for k, v in summary['metrics'].items():
+            print(k, ':', "%(v).4f" % {'v': v})
+
+    def compute(self, pred, obj, label):
+        b_range = torch.arange(pred.size()[0], device=self.config['DEVICE'])
+        target_pred = pred[b_range, obj]
+        pred = torch.where(label.byte(), -torch.ones_like(pred) * 10000000, pred)
+        pred[b_range, obj] = target_pred
+        ranks = 1 + torch.argsort(torch.argsort(pred, dim=1, descending=True), dim=1, descending=False)[b_range, obj]
+
+        results = {}
+        ranks = ranks.float()
+        results['count'] = torch.numel(ranks) + results.get('count', 0.0)
+        results['mr'] = torch.sum(ranks).item() + results.get('mr', 0.0)
+        results['mrr'] = torch.sum(1.0 / ranks).item() + results.get('mrr', 0.0)
+        for k in range(10):
+            results['hits@{}'.format(k + 1)] = torch.numel(ranks[ranks <= (k + 1)]) + results.get(
+                'hits@{}'.format(k + 1), 0.0)
+        return results
+
+    def run(self, *args, **kwargs):
+        """
+            Calling this iterates through different data points, obtains their labels, passes them to the model,
+                collects the scores, computes the metrics, and reports them.
+        """
+        metrics = []
+        #self.sampler = self.sampler.reset
+        # TODO iterate over direct and reci triples without sampler, just with [::bs]
+
+        with Timer() as timer:
+            with torch.no_grad():
+                for position in self.corruption_positions:
+
+                    metric_across_positions = []
+
+                    if position == 0:
+                        # evaluate "direct"
+                        for i in range(self.data_eval.shape[0])[::self.bs]:
+                            eval_batch_direct = self.data_eval[i: i + self.bs]
+                            if not self.config['SAMPLER_W_QUALIFIERS']:
+                                subs = torch.tensor(eval_batch_direct[:, 0], device=self.config['DEVICE'])
+                                rels = torch.tensor(eval_batch_direct[:, 1], device=self.config['DEVICE'])
+                                objs = torch.tensor(eval_batch_direct[:, 2], device=self.config['DEVICE'])
+                                scores = self.model.forward(subs, rels)
+                                labels = torch.tensor(self.get_label(eval_batch_direct), device=self.config['DEVICE'])
+                                metr = self.compute(scores, objs, labels)
+
+                            else:
+                                raise NotImplementedError
+
+
+
+                    elif position == 2:
+                        # evaluate "reci"
+                        for i in range(self.data_eval[::self.bs]):
+                            eval_batch_direct = self.data_eval[i: i + self.bs]
+                            if not self.config['SAMPLER_W_QUALIFIERS']:
+                                subs = torch.tensor(eval_batch_direct[:, 2], device=self.config['DEVICE'])
+                                rels = torch.tensor(eval_batch_direct[:, 1] + self.config['NUM_RELATIONS'], device=self.config['DEVICE'])
+                                objs = torch.tensor(eval_batch_direct[:, 0], device=self.config['DEVICE'])
+                                scores = self.model.forward(subs, rels)
+                                labels = torch.tensor(self.get_label(eval_batch_direct), device=self.config['DEVICE'])
+                                metr = self.compute(scores, objs, labels)
+                            else:
+                                raise NotImplementedError
+
+                    _metrics = self._compute_metric_(scores)
+                    metric_across_positions.append(_metrics)
+
+                metrics.append(np.mean(metric_across_positions, axis=0))
         # Spruce up the summary with more information
         time_taken = timer.interval
         metrics = self._summarize_metrics_(metrics)

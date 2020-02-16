@@ -580,6 +580,8 @@ def training_loop_gcn(epochs: int,
                 loss.backward()
                 opt.step()
 
+                summary_val = val_testbench()
+
         # Log this stuff
         print(f"[Epoch: {e} ] Loss: {np.mean(per_epoch_loss)}")
         #train_acc.append(np.mean(per_epoch_tr_acc))

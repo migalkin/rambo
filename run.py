@@ -19,7 +19,7 @@ from mytorch.utils.goodies import *
 from parse_wd15k import Quint
 from load import DataManager
 from utils import *
-from evaluation import EvaluationBench, EvaluationBenchArity, evaluate_pointwise
+from evaluation import EvaluationBench, EvaluationBenchArity, EvaluationBenchGNNMultiClass, evaluate_pointwise
 from evaluation import acc, mrr, mr, hits_at
 from models import TransE, ConvKB, KBGat, CompGCNConvE, CompGCNDistMult, CompGCNTransE
 from corruption import Corruption
@@ -332,11 +332,12 @@ if __name__ == "__main__":
                                     lbl_smooth=config['LABEL_SMOOTHING'],
                                     bs=config['BATCH_SIZE'],
                                     with_q=config['SAMPLER_W_QUALIFIERS'])
-        # args['data_fn'] = partial(MultiClassSampler,
-        #                           n_entities=config['NUM_ENTITIES'],
-        #                           lbl_smooth=config['LABEL_SMOOTHING'],
-        #                           bs=config['BATCH_SIZE'])
+        evaluation_valid = EvaluationBenchGNNMultiClass(ev_vl_data, model, bs=config['BATCH_SIZE'], metrics=eval_metrics,
+                                           filtered=True, n_ents=n_entities,
+                                           excluding_entities=ent_excluded_from_corr,
+                                           positions=config.get('CORRUPTION_POSITIONS', None), config=config)
         args['data_fn'] = sampler.reset
+        args['val_testbench'] = evaluation_valid.run
 
 
 
