@@ -5,7 +5,6 @@ import types
 # Local
 from utils import *
 from corruption import Corruption
-from sampler import EvalSampler
 
 
 class EvaluationBench:
