@@ -338,6 +338,7 @@ if __name__ == "__main__":
                                            positions=config.get('CORRUPTION_POSITIONS', None), config=config)
         args['data_fn'] = sampler.reset
         args['val_testbench'] = evaluation_valid.run
+        args['trn_testbench'] = None
 
 
 

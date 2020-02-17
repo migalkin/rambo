@@ -231,26 +231,40 @@ class EvaluationBenchGNNMultiClass:
         """ See what metrics are to be computed, and compute them."""
         return [_metric(scores) for _metric in self.metrics]
 
-    def _summarize_metrics_(self, accumulated_metrics: np.array) -> np.array:
+    def _summarize_metrics_(self, accumulated_metrics: dict, eval_size: int) -> dict:
         """
             Aggregate metrics across time. Accepts np array of (len(self.data_eval), len(self.metrics))
         """
-        mean = np.mean(accumulated_metrics, axis=0)
+        # mean = np.mean(accumulated_metrics, axis=0)
         summary = {}
-        for i, _metric in enumerate(self.metrics):
-            if _metric.__class__ is partial:
-                summary[_metric.func.__name__ + ' ' + str(_metric.keywords['k'])] = mean[i]
-            else:
-                summary[_metric.__name__] = mean[i]
+
+        for k, v in accumulated_metrics.items():
+            summary[k] = v / float(eval_size)
 
         return summary
 
+    def _mean_metrics_(self, left: dict, right:dict) -> dict:
+        # assume left and right have the same keys
+        result = {}
+        for k, v in left.items():
+            result[k] = left[k] + right[k] / 2.0
+
+        return result
     @staticmethod
     def summarize_run(summary: dict):
         """ Nicely print what just went down """
         print(f"This run over {summary['data_length']} datapoints took "
               f"%(time).3f min" % {'time': summary['time_taken'] / 60.0})
         print("---------\n")
+        print('Subject prediction results')
+        for k, v in summary['left'].items():
+            print(k, ':', "%(v).4f" % {'v': v})
+        print("---------\n")
+        print('Object prediction results')
+        for k, v in summary['right'].items():
+            print(k, ':', "%(v).4f" % {'v': v})
+        print("---------\n")
+        print('Overall prediction results')
         for k, v in summary['metrics'].items():
             print(k, ':', "%(v).4f" % {'v': v})
 
@@ -267,8 +281,8 @@ class EvaluationBenchGNNMultiClass:
         results['mr'] = torch.sum(ranks).item() + results.get('mr', 0.0)
         results['mrr'] = torch.sum(1.0 / ranks).item() + results.get('mrr', 0.0)
         for k in range(10):
-            results['hits@{}'.format(k + 1)] = torch.numel(ranks[ranks <= (k + 1)]) + results.get(
-                'hits@{}'.format(k + 1), 0.0)
+            results['hits_at {}'.format(k + 1)] = torch.numel(ranks[ranks <= (k + 1)]) + results.get(
+                'hits_at {}'.format(k + 1), 0.0)
         return results
 
     def run(self, *args, **kwargs):
@@ -284,8 +298,6 @@ class EvaluationBenchGNNMultiClass:
             with torch.no_grad():
                 for position in self.corruption_positions:
 
-                    metric_across_positions = []
-
                     if position == 0:
                         # evaluate "direct"
                         for i in range(self.data_eval.shape[0])[::self.bs]:
@@ -300,7 +312,7 @@ class EvaluationBenchGNNMultiClass:
 
                             else:
                                 raise NotImplementedError
-
+                        left_metrics = self._summarize_metrics_(metr, len(self.data_eval))
 
 
                     elif position == 2:
@@ -316,16 +328,14 @@ class EvaluationBenchGNNMultiClass:
                                 metr = self.compute(scores, objs, labels)
                             else:
                                 raise NotImplementedError
+                        right_metrics = self._summarize_metrics_(metr, len(self.data_eval))
 
-                    _metrics = self._compute_metric_(scores)
-                    metric_across_positions.append(_metrics)
 
-                metrics.append(np.mean(metric_across_positions, axis=0))
         # Spruce up the summary with more information
         time_taken = timer.interval
-        metrics = self._summarize_metrics_(metrics)
+        metrics = self._mean_metrics_(left_metrics, right_metrics)
         summary = {'metrics': metrics, 'time_taken': time_taken, 'data_length': len(self.data_eval),
-                   'max_len_data': self.max_len_data, 'filtered': self.filtered}
+                   'max_len_data': self.max_len_data, 'filtered': self.filtered, 'left': left_metrics, 'right': right_metrics}
 
         self.summarize_run(summary)
 

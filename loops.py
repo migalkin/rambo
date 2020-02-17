@@ -580,11 +580,152 @@ def training_loop_gcn(epochs: int,
                 loss.backward()
                 opt.step()
 
-                summary_val = val_testbench()
+                # summary_val = val_testbench()
 
         # Log this stuff
         print(f"[Epoch: {e} ] Loss: {np.mean(per_epoch_loss)}")
-        #train_acc.append(np.mean(per_epoch_tr_acc))
+        # train_acc.append(np.mean(per_epoch_tr_acc))
         train_loss.append(np.mean(per_epoch_loss))
 
-    pass
+        if e % eval_every == 0 and e >= 1:
+            with torch.no_grad():
+                summary_val = val_testbench()
+                per_epoch_vl_acc = summary_val['metrics']['acc']
+                per_epoch_vl_mrr = summary_val['metrics']['mrr']
+                per_epoch_vl_mr = summary_val['metrics']['mr']
+                per_epoch_vl_hits_3 = summary_val['metrics']['hits_at 3']
+                per_epoch_vl_hits_5 = summary_val['metrics']['hits_at 5']
+                per_epoch_vl_hits_10 = summary_val['metrics']['hits_at 10']
+
+                valid_acc.append(per_epoch_vl_acc)
+                valid_mrr.append(per_epoch_vl_mrr)
+                valid_mr.append(per_epoch_vl_mr)
+                valid_hits_3.append(per_epoch_vl_hits_3)
+                valid_hits_5.append(per_epoch_vl_hits_5)
+                valid_hits_10.append(per_epoch_vl_hits_10)
+
+                if run_trn_testbench:
+                    # Also run train testbench
+                    summary_trn = trn_testbench()
+                    per_epoch_tr_acc_bnchmk = summary_trn['metrics']['acc']
+                    per_epoch_tr_mrr_bnchmk = summary_trn['metrics']['mrr']
+                    per_epoch_tr_mr_bnchmk = summary_trn['metrics']['mr']
+                    per_epoch_tr_hits_3_bnchmk = summary_trn['metrics']['hits_at 3']
+                    per_epoch_tr_hits_5_bnchmk = summary_trn['metrics']['hits_at 5']
+                    per_epoch_tr_hits_10_bnchmk = summary_trn['metrics']['hits_at 10']
+
+                    train_acc_bnchmk.append(per_epoch_tr_acc_bnchmk)
+                    train_mrr_bnchmk.append(per_epoch_tr_mrr_bnchmk)
+                    train_mr_bnchmk.append(per_epoch_tr_mr_bnchmk)
+                    train_hits_3_bnchmk.append(per_epoch_tr_hits_3_bnchmk)
+                    train_hits_5_bnchmk.append(per_epoch_tr_hits_5_bnchmk)
+                    train_hits_10_bnchmk.append(per_epoch_tr_hits_10_bnchmk)
+
+                    # Print statement here
+                    print("Epoch: %(epo)03d | Loss: %(loss).5f | Tr_c: %(tracc)0.5f | "
+                          "Vl_c: %(vlacc)0.5f | Vl_mrr: %(vlmrr)0.5f | Vl_mr: %(vlmr)0.5f | "
+                          "Vl_h3: %(vlh3)0.5f | Vl_h5: %(vlh5)0.5f | Vl_h10: %(vlh10)0.5f | "
+                          "Tr_c_b: %(tracc_b)0.5f | Tr_mrr_b: %(trmrr_b)0.5f | Tr_mr_b: %(trmr_b)0.5f | "
+                          "Tr_h3_b: %(trh3_b)0.5f | Tr_h5_b: %(trh5_b)0.5f | Tr_h10_b: %(trh10_b)0.5f | "
+                          "Time_trn: %(time).3f min"
+                          % {'epo': e,
+                             'loss': float(np.mean(per_epoch_loss)),
+                             'tracc': float(np.mean(per_epoch_tr_acc)),
+                             'vlacc': float(per_epoch_vl_acc),
+                             'vlmrr': float(per_epoch_vl_mrr),
+                             'vlmr': float(per_epoch_vl_mr),
+                             'vlh3': float(per_epoch_vl_hits_3),
+                             'vlh5': float(per_epoch_vl_hits_5),
+                             'vlh10': float(per_epoch_vl_hits_10),
+                             'tracc_b': float(per_epoch_tr_acc_bnchmk),
+                             'trmrr_b': float(per_epoch_tr_mrr_bnchmk),
+                             'trmr_b': float(per_epoch_tr_mr_bnchmk),
+                             'trh3_b': float(per_epoch_tr_hits_3_bnchmk),
+                             'trh5_b': float(per_epoch_tr_hits_5_bnchmk),
+                             'trh10_b': float(per_epoch_tr_hits_10_bnchmk),
+                             'time': timer.interval / 60.0})
+
+                    if log_wandb:
+                        # Wandb stuff
+                        wandb.log({
+                            'epoch': e,
+                            'loss': float(np.mean(per_epoch_loss)),
+                            'trn_acc': float(np.mean(per_epoch_tr_acc)),
+                            'val_acc': float(per_epoch_vl_acc),
+                            'val_mrr': float(per_epoch_vl_mrr),
+                            'val_mr': float(per_epoch_vl_mr),
+                            'val_hits@3': float(per_epoch_vl_hits_3),
+                            'val_hits@5': float(per_epoch_vl_hits_5),
+                            'val_hits@10': float(per_epoch_vl_hits_10),
+                            'trn_acc_b': float(per_epoch_tr_acc_bnchmk),
+                            'trn_mrr_b': float(per_epoch_tr_mrr_bnchmk),
+                            'trn_mr_b': float(per_epoch_tr_mr_bnchmk),
+                            'trn_hits@3_b': float(per_epoch_tr_hits_3_bnchmk),
+                            'trn_hits@5_b': float(per_epoch_tr_hits_5_bnchmk),
+                            'trn_hits@10_b': float(per_epoch_tr_hits_10_bnchmk),
+                        })
+
+                else:
+                    # Don't benchmark over train
+
+                    # Print Statement here
+                    print("Epoch: %(epo)03d | Loss: %(loss).5f | "
+                          "Vl_c: %(vlacc)0.5f | Vl_mrr: %(vlmrr)0.5f | Vl_mr: %(vlmr)0.5f | "
+                          "Vl_h3: %(vlh3)0.5f | Vl_h5: %(vlh5)0.5f | Vl_h10: %(vlh10)0.5f | "
+                          "time_trn: %(time).3f min"
+                          % {'epo': e,
+                             'loss': float(np.mean(per_epoch_loss)),
+                             'vlacc': float(per_epoch_vl_acc),
+                             'vlmrr': float(per_epoch_vl_mrr),
+                             'vlmr': float(per_epoch_vl_mr),
+                             'vlh3': float(per_epoch_vl_hits_3),
+                             'vlh5': float(per_epoch_vl_hits_5),
+                             'vlh10': float(per_epoch_vl_hits_10),
+                             'time': timer.interval / 60.0})
+
+                    if log_wandb:
+                        # Wandb stuff
+                        wandb.log({
+                            'epoch': e,
+                            'loss': float(np.mean(per_epoch_loss)),
+                            'val_acc_b': float(per_epoch_vl_acc),
+                            'val_mrr_b': float(per_epoch_vl_mrr),
+                            'val_mr_b': float(per_epoch_vl_mr),
+                            'val_hits@3_b': float(per_epoch_vl_hits_3),
+                            'val_hits@5_b': float(per_epoch_vl_hits_5),
+                            'val_hits@10_b': float(per_epoch_vl_hits_10),
+                        })
+
+                # We might wanna save the model, too
+                if savedir is not None:
+                    mt_save(
+                        savedir,
+                        torch_stuff=[tosave(obj=save_content['model'].state_dict(), fname='model.torch')],
+                        pickle_stuff=[tosave(fname='traces.pkl',
+                                             obj=[  # train_acc, train_loss, train_acc_bnchmk, train_mrr_bnchmk,
+                                                    # train_hits_3_bnchmk, train_hits_5_bnchmk, train_hits_10_bnchmk,
+                                                  train_loss, valid_acc, valid_mrr, valid_hits_3, valid_hits_5, valid_hits_10])],
+                        json_stuff=[tosave(obj=save_content['config'], fname='config.json')])
+        else:
+            # No test benches this time around
+            print("Epoch: %(epo)03d | Loss: %(loss).5f |  "
+                  "Time_Train: %(time).3f min"
+                  % {'epo': e,
+                     'loss': float(np.mean(per_epoch_loss)),
+                     # 'tracc': float(np.mean(per_epoch_tr_acc)),
+                     'time': timer.interval / 60.0})
+
+            if log_wandb:
+                # Wandb stuff
+                wandb.log({
+                    'epoch': e,
+                    'loss': float(np.mean(per_epoch_loss)),
+                    # 'trn_acc': float(np.mean(per_epoch_tr_acc))
+                })
+
+    return train_acc, train_loss, \
+           train_acc_bnchmk, train_mrr_bnchmk, \
+           train_hits_3_bnchmk, train_hits_5_bnchmk, train_hits_10_bnchmk, \
+           valid_acc, valid_mrr, \
+           valid_hits_3, valid_hits_5, valid_hits_10
+
