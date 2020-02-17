@@ -316,7 +316,7 @@ class EvaluationBenchGNNMultiClass:
 
                     elif position == 2:
                         # evaluate "reci"
-                        for i in range(self.data_eval[::self.bs]):
+                        for i in range(self.data_eval.shape[0])[::self.bs]:
                             eval_batch_direct = self.data_eval[i: i + self.bs]
                             if not self.config['SAMPLER_W_QUALIFIERS']:
                                 subs = torch.tensor(eval_batch_direct[:, 2], device=self.config['DEVICE'])
