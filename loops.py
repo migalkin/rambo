@@ -590,7 +590,7 @@ def training_loop_gcn(epochs: int,
         if e % eval_every == 0 and e >= 1:
             with torch.no_grad():
                 summary_val = val_testbench()
-                per_epoch_vl_acc = summary_val['metrics']['acc']
+                per_epoch_vl_acc = summary_val['metrics']['hits_at 1']
                 per_epoch_vl_mrr = summary_val['metrics']['mrr']
                 per_epoch_vl_mr = summary_val['metrics']['mr']
                 per_epoch_vl_hits_3 = summary_val['metrics']['hits_at 3']
@@ -607,7 +607,7 @@ def training_loop_gcn(epochs: int,
                 if run_trn_testbench:
                     # Also run train testbench
                     summary_trn = trn_testbench()
-                    per_epoch_tr_acc_bnchmk = summary_trn['metrics']['acc']
+                    per_epoch_tr_acc_bnchmk = summary_trn['metrics']['hits_at 1']
                     per_epoch_tr_mrr_bnchmk = summary_trn['metrics']['mrr']
                     per_epoch_tr_mr_bnchmk = summary_trn['metrics']['mr']
                     per_epoch_tr_hits_3_bnchmk = summary_trn['metrics']['hits_at 3']
