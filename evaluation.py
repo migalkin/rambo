@@ -258,11 +258,11 @@ class EvaluationBenchGNNMultiClass:
         print(f"This run over {summary['data_length']} datapoints took "
               f"%(time).3f min" % {'time': summary['time_taken'] / 60.0})
         print("---------\n")
-        print('Subject prediction results')
+        print('Object prediction results')
         for k, v in summary['left'].items():
             print(k, ':', "%(v).4f" % {'v': v})
         print("---------\n")
-        print('Object prediction results')
+        print('Subject prediction results')
         for k, v in summary['right'].items():
             print(k, ':', "%(v).4f" % {'v': v})
         print("---------\n")
