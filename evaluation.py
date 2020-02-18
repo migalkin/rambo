@@ -270,11 +270,36 @@ class EvaluationBenchGNNMultiClass:
         for k, v in summary['metrics'].items():
             print(k, ':', "%(v).4f" % {'v': v})
 
-    def compute(self, pred, obj, label, results):
+    def compute(self, pred, obj, label, results, ignored_entities=[]):
+        """
+            Discard the predictions for all objects not in label (not currently evaluated)
+
+        :param pred: a 2D bs, ne tensor containing bs distributions over entities
+        :param obj: the actual objects being predicted
+        :param label: a 2D bs, ne multi-hot tensor
+            (where 1 -> the obj appeared in train/val/test split)
+        :param ignored_entities: some entities we expect to not appear in s/o positions.
+            can mention them here. Its a list like [2, 10, 3242344, ..., 69]
+        :param results:
+        :return:
+        """
+
         b_range = torch.arange(pred.size()[0], device=self.config['DEVICE'])
-        target_pred = pred[b_range, obj]
-        pred = torch.where(label.byte(), -torch.ones_like(pred) * 10000000, pred)
-        pred[b_range, obj] = target_pred
+        irrelevant = label.clone()
+        irrelevant[b_range, obj] = 0            #
+        irrelevant[:, ignored_entities] = 1     # Across batch, add 1 to ents never to be predicted
+        pred[irrelevant.bool()] = -1000000
+        '''
+            At this point, pred has a -1000000 at all positions where
+                label = 1 but it is not in objs.
+                that is, if 
+                    (0, 1, 5) and (0, 1, 6) were in the KG. 
+                    And the current triple being evaluated is (0, 1, 9)
+                    then pred[i_batch, 5] and pred[i_batch, 6] will be -100000 but
+                        pred[i_batch, 9] will retain its values.
+                        
+            Then the problem is simply to find the rank of the indices we get from objs        
+        '''
         ranks = 1 + torch.argsort(torch.argsort(pred, dim=1, descending=True), dim=1, descending=False)[b_range, obj]
 
         # results = {}
@@ -289,7 +314,8 @@ class EvaluationBenchGNNMultiClass:
 
     def run(self, *args, **kwargs):
         """
-            Calling this iterates through different data points, obtains their labels, passes them to the model,
+            Calling this iterates through different data points, obtains their labels,
+            passes them to the model,
                 collects the scores, computes the metrics, and reports them.
         """
         metrics = []
