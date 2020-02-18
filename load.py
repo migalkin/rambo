@@ -1109,6 +1109,7 @@ def load_fb15k237() -> Dict:
             open(RAW_DATA_DIR / "test2id.txt", "r") as test_file:
         num_entities = int(next(ent_file).strip("\n")) + 1  # One more for padding/unk
         num_relations = int(next(rel_file).strip("\n")) + 1  # One more for padding/unk
+        num_triples = int(next(train_file).strip("\n"))
 
         for line in train_file:
             triple = line.strip("\n").split(" ")
@@ -1125,7 +1126,7 @@ def load_fb15k237() -> Dict:
             test_triples.append([int(triple[0]) + 1, int(triple[2]) + 1, int(triple[1]) + 1])
 
     return {"train": training_triples, "valid": valid_triples, "test": test_triples,
-            "n_entities": num_entities, "n_relations": num_relations}
+            "n_entities": num_entities, "n_relations": num_relations, "e2id": None, "r2id": None}
 
 
 def load_fb15k() -> Dict:
@@ -1334,10 +1335,13 @@ class DataManager(object):
             qual_rel[:, len(raw):] = qual_rel[:, :len(raw)]
             qual_ent[:, len(raw):] = qual_ent[:, :len(raw)]
 
-        return {'edge_index': edge_index,
-                'edge_type': edge_type,
-                'qual_rel': qual_rel,
-                'qual_ent': qual_ent}
+            return {'edge_index': edge_index,
+                    'edge_type': edge_type,
+                    'qual_rel': qual_rel,
+                    'qual_ent': qual_ent}
+        else:
+            return {'edge_index': edge_index,
+                    'edge_type': edge_type}
 
     @staticmethod
     def add_reciprocals(data: Union[List[List[int]], np.ndarray], config: dict) -> Union[List[List[int]], np.ndarray]:

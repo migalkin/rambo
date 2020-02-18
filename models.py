@@ -748,6 +748,7 @@ class CompGCNBase(torch.nn.Module):
         self.hid_drop = config['COMPGCNARGS']['HID_DROP']
         # self.bias = config['COMPGCNARGS']['BIAS']
         self.model_nm = config['MODEL_NAME'].lower()
+        self.triple_mode = config['STATEMENT_LEN'] == 3
 
     def loss(self, pred, true_label):
         return self.bceloss(pred, true_label)
@@ -762,8 +763,10 @@ class CompQGCNEncoder(CompGCNBase):
         # Storing the KG
         self.edge_index = torch.tensor(graph_repr['edge_index'], dtype=torch.long, device=self.device)
         self.edge_type = torch.tensor(graph_repr['edge_type'], dtype=torch.long, device=self.device)
-        self.qual_rel = torch.tensor(graph_repr['qual_rel'], dtype=torch.long, device=self.device)
-        self.qual_ent = torch.tensor(graph_repr['qual_ent'], dtype=torch.long, device=self.device)
+
+        if not self.triple_mode:
+            self.qual_rel = torch.tensor(graph_repr['qual_rel'], dtype=torch.long, device=self.device)
+            self.qual_ent = torch.tensor(graph_repr['qual_ent'], dtype=torch.long, device=self.device)
 
         self.gcn_dim = self.emb_dim if self.n_layer == 1 else self.gcn_dim
         """
@@ -813,17 +816,27 @@ class CompQGCNEncoder(CompGCNBase):
         r = self.init_rel if not self.model_nm.endswith('transe') \
             else torch.cat([self.init_rel, -self.init_rel], dim=0)
 
-        # x, edge_index, edge_type, rel_embed, qual_ent, qual_rel
-        x, r = self.conv1(x=self.init_embed, edge_index=self.edge_index,
-                          edge_type=self.edge_type, rel_embed=r,
-                          qualifier_ent=self.qual_ent,
-                          qualifier_rel=self.qual_rel)
+        if not self.triple_mode:
+            # x, edge_index, edge_type, rel_embed, qual_ent, qual_rel
+            x, r = self.conv1(x=self.init_embed, edge_index=self.edge_index,
+                              edge_type=self.edge_type, rel_embed=r,
+                              qualifier_ent=self.qual_ent,
+                              qualifier_rel=self.qual_rel)
 
-        x = drop1(x)
-        x, r = self.conv2(x=x, edge_index=self.edge_index,
-                          edge_type=self.edge_type, rel_embed=r,
-                          qualifier_ent=self.qual_ent,
-                          qualifier_rel=self.qual_rel) if self.n_layer == 2 else (x, r)
+            x = drop1(x)
+            x, r = self.conv2(x=x, edge_index=self.edge_index,
+                              edge_type=self.edge_type, rel_embed=r,
+                              qualifier_ent=self.qual_ent,
+                              qualifier_rel=self.qual_rel) if self.n_layer == 2 else (x, r)
+
+        else:
+            x, r = self.conv1(x=self.init_embed, edge_index=self.edge_index,
+                              edge_type=self.edge_type, rel_embed=r)
+
+            x = drop1(x)
+            x, r = self.conv2(x=x, edge_index=self.edge_index,
+                              edge_type=self.edge_type, rel_embed=r) if self.n_layer == 2 else (x, r)
+
         x = drop2(x) if self.n_layer == 2 else x
 
         sub_emb = torch.index_select(x, 0, sub)
@@ -955,7 +968,8 @@ class CompQGCNConvLayer(MessagePassing):
         self.w_out = get_param((in_channels, out_channels))  # (100,200)
         self.w_rel = get_param((in_channels, out_channels))  # (100,200)
 
-        self.w_q = get_param((in_channels, in_channels))  # new
+        if self.p['STATEMENT_LEN'] != 3:
+            self.w_q = get_param((in_channels, in_channels))  # new for quals setup
 
         self.loop_rel = get_param((1, in_channels))  # (1,100)
         self.loop_ent = get_param((1, in_channels))  # new
@@ -966,7 +980,7 @@ class CompQGCNConvLayer(MessagePassing):
         if self.p['COMPGCNARGS']['BIAS']: self.register_parameter('bias', Parameter(
             torch.zeros(out_channels)))
 
-    def forward(self, x, edge_index, edge_type, rel_embed, qualifier_ent, qualifier_rel):
+    def forward(self, x, edge_index, edge_type, rel_embed, qualifier_ent=None, qualifier_rel=None):
         if self.device is None:
             self.device = edge_index.device
 
@@ -977,11 +991,12 @@ class CompQGCNConvLayer(MessagePassing):
         self.in_index, self.out_index = edge_index[:, :num_edges], edge_index[:, num_edges:]
         self.in_type, self.out_type = edge_type[:num_edges], edge_type[num_edges:]
 
-        self.in_index_qual_ent, self.out_index_qual_ent = qualifier_ent[:, :num_edges], \
-                                                          qualifier_ent[:, num_edges:]
+        if self.p['STATEMENT_LEN'] != 3:
+            self.in_index_qual_ent, self.out_index_qual_ent = qualifier_ent[:, :num_edges], \
+                                                              qualifier_ent[:, num_edges:]
 
-        self.in_index_qual_rel, self.out_index_qual_rel = qualifier_rel[:, :num_edges], \
-                                                          qualifier_rel[:, num_edges:]
+            self.in_index_qual_rel, self.out_index_qual_rel = qualifier_rel[:, :num_edges], \
+                                                              qualifier_rel[:, num_edges:]
 
         # Self edges between all the nodes
         self.loop_index = torch.stack([torch.arange(num_ent), torch.arange(num_ent)]).to(self.device)
@@ -994,19 +1009,34 @@ class CompQGCNConvLayer(MessagePassing):
 
         # @TODO: compute the norms for qual_rel and pass it along
 
-        in_res = self.propagate('add', self.in_index, x=x, edge_type=self.in_type,
-                                rel_embed=rel_embed, edge_norm=self.in_norm, mode='in',
-                                ent_embed=x, qualifier_ent=self.in_index_qual_ent,
-                                qualifier_rel=self.in_index_qual_rel)
+        if self.p['STATEMENT_LEN'] != 3:
 
-        loop_res = self.propagate('add', self.loop_index, x=x, edge_type=self.loop_type,
-                                  rel_embed=rel_embed, edge_norm=None, mode='loop',
-                                  ent_embed=None, qualifier_ent=None, qualifier_rel=None)
+            in_res = self.propagate('add', self.in_index, x=x, edge_type=self.in_type,
+                                    rel_embed=rel_embed, edge_norm=self.in_norm, mode='in',
+                                    ent_embed=x, qualifier_ent=self.in_index_qual_ent,
+                                    qualifier_rel=self.in_index_qual_rel)
 
-        out_res = self.propagate('add', self.out_index, x=x, edge_type=self.out_type,
-                                 rel_embed=rel_embed, edge_norm=self.out_norm, mode='out',
-                                 ent_embed=x, qualifier_ent=self.out_index_qual_ent,
-                                 qualifier_rel=self.out_index_qual_rel)
+            loop_res = self.propagate('add', self.loop_index, x=x, edge_type=self.loop_type,
+                                      rel_embed=rel_embed, edge_norm=None, mode='loop',
+                                      ent_embed=None, qualifier_ent=None, qualifier_rel=None)
+
+            out_res = self.propagate('add', self.out_index, x=x, edge_type=self.out_type,
+                                     rel_embed=rel_embed, edge_norm=self.out_norm, mode='out',
+                                     ent_embed=x, qualifier_ent=self.out_index_qual_ent,
+                                     qualifier_rel=self.out_index_qual_rel)
+
+        else:
+            in_res = self.propagate('add', self.in_index, x=x, edge_type=self.in_type,
+                                    rel_embed=rel_embed, edge_norm=self.in_norm, mode='in',
+                                    ent_embed=None, qualifier_ent=None, qualifier_rel=None)
+
+            loop_res = self.propagate('add', self.loop_index, x=x, edge_type=self.loop_type,
+                                      rel_embed=rel_embed, edge_norm=None, mode='loop',
+                                      ent_embed=None, qualifier_ent=None, qualifier_rel=None)
+
+            out_res = self.propagate('add', self.out_index, x=x, edge_type=self.out_type,
+                                     rel_embed=rel_embed, edge_norm=self.out_norm, mode='out',
+                                     ent_embed=None, qualifier_ent=None, qualifier_rel=None)
 
         out = self.drop(in_res) * (1 / 3) + self.drop(out_res) * (1 / 3) + loop_res * (1 / 3)
 
@@ -1090,16 +1120,20 @@ class CompQGCNConvLayer(MessagePassing):
         return self.qualifier_aggregate(qualifier_emb, rel_part_emb)
 
     # return qualifier_emb
-    def message(self, x_j, edge_type, rel_embed, edge_norm, mode, ent_embed, qualifier_ent,
-                qualifier_rel):
+    def message(self, x_j, edge_type, rel_embed, edge_norm, mode, ent_embed=None, qualifier_ent=None,
+                qualifier_rel=None):
         weight = getattr(self, 'w_{}'.format(mode))
 
-        # add code here
-        if mode != 'loop':
-            rel_emb = self.update_rel_emb_with_qualifier(ent_embed, rel_embed, qualifier_ent,
-                                                         qualifier_rel, edge_type)  #
+        if self.p['STATEMENT_LEN'] != 3:
+            # add code here
+            if mode != 'loop':
+                rel_emb = self.update_rel_emb_with_qualifier(ent_embed, rel_embed, qualifier_ent,
+                                                             qualifier_rel, edge_type)  #
+            else:
+                rel_emb = torch.index_select(rel_embed, 0, edge_type)
         else:
             rel_emb = torch.index_select(rel_embed, 0, edge_type)
+
         xj_rel = self.rel_transform(x_j, rel_emb)
         out = torch.mm(xj_rel, weight)
 
@@ -1127,3 +1161,6 @@ class CompQGCNConvLayer(MessagePassing):
         return '{}({}, {}, num_rels={})'.format(
             self.__class__.__name__, self.in_channels, self.out_channels,
             self.num_rels)
+
+
+
