@@ -9,6 +9,7 @@ from torch import nn
 import torch.autograd
 import torch.nn.functional as F
 from torch.nn import Parameter
+from torch.nn.init import xavier_normal_
 
 import numpy as np
 from typing import List, Optional, Dict, Tuple
@@ -765,7 +766,14 @@ class CompQGCNEncoder(CompGCNBase):
         self.qual_ent = torch.tensor(graph_repr['qual_ent'], dtype=torch.long, device=self.device)
 
         self.gcn_dim = self.emb_dim if self.n_layer == 1 else self.gcn_dim
+        """
+         Replaced param init to nn.Embedding init with a padding idx
+        """
         self.init_embed = get_param((self.num_ent, self.emb_dim))
+        self.init_embed.data[0] = 0
+        # self.init_embed = nn.Embedding(self.num_ent, self.emb_dim, padding_idx=0)
+        # xavier_normal_(self.init_embed.weight)
+        # self.init_embed.weight.data[0] = 0
 
 
         # What about bases?
@@ -775,8 +783,13 @@ class CompQGCNEncoder(CompGCNBase):
         else:
             if self.model_nm.endswith('transe'):
                 self.init_rel = get_param((self.num_rel, self.emb_dim))
+                # self.init_rel = nn.Embedding(self.num_rel, self.emb_dim, padding_idx=0)
             else:
                 self.init_rel = get_param((self.num_rel * 2, self.emb_dim))
+                # self.init_rel = nn.Embedding(self.num_rel * 2, self.emb_dim, padding_idx=0)
+            # xavier_normal_(self.init_rel.weight)
+            # self.init_rel.weight.data[0] = 0
+            self.init_rel.data[0] = 0
 
         if self.n_bases > 0:
             # self.conv1 = CompGCNConvBasis(self.emb_dim, self.gcn_dim, self.num_rel,

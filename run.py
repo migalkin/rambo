@@ -199,6 +199,9 @@ if __name__ == "__main__":
         train_data_gcn = DataManager.get_graph_repr(train_data, config)
         valid_data_gcn = DataManager.get_graph_repr(valid_data, config)
         test_data_gcn = DataManager.get_graph_repr(test_data, config)
+        # add reciprocals to the train data
+        reci = DataManager.add_reciprocals(train_data, config)
+        train_data.extend(reci)
     else:
         train_data_gcn, valid_data_gcn, test_data_gcn = None, None, None
 

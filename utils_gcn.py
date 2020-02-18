@@ -96,6 +96,9 @@ class MessagePassing(torch.nn.Module):
 def get_param(shape):
     param = Parameter(torch.Tensor(*shape))
     xavier_normal_(param.data)
+    # param = torch.nn.Embedding(*shape, padding_idx=0)
+    # xavier_normal_(param.weight)
+    # param.weight.data[0] = 0
     return param
 
 

@@ -1339,6 +1339,39 @@ class DataManager(object):
                 'qual_rel': qual_rel,
                 'qual_ent': qual_ent}
 
+    @staticmethod
+    def add_reciprocals(data: Union[List[List[int]], np.ndarray], config: dict) -> Union[List[List[int]], np.ndarray]:
+        """
+
+        :param data: original direct data
+        :param config: config dict
+        :return: data enriched with reverse triples
+        """
+        reci = []
+        nr = config['NUM_RELATIONS']
+        has_qualifiers: bool = config['STATEMENT_LEN'] != 3
+
+        try:
+            nr = config['NUM_RELATIONS']
+        except KeyError:
+            raise AssertionError("Function called too soon. Num relations not found.")
+
+        for i, datum in enumerate(data):
+            s, o = datum[0], datum[2]
+            reci_r = datum[1] + nr
+
+            reci_triple = [o, reci_r, s]
+
+            if has_qualifiers:
+                quals = datum[3:]
+                reci_triple.extend(quals)
+
+            reci.append(reci_triple)
+
+        return reci
+
+
+
 
 if __name__ == "__main__":
     # ds = load_fb15k237()

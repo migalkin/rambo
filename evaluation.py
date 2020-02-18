@@ -201,6 +201,9 @@ class EvaluationBenchGNNMultiClass:
             self.index[(s, r, *quals)].append(o) if self.config['SAMPLER_W_QUALIFIERS'] else self.index[(s, r)].append(o)
             self.index[(o, reci_rel, *quals)].append(s) if self.config['SAMPLER_W_QUALIFIERS'] else self.index[(o, reci_rel)].append(s)
 
+        for k, v in self.index.items():
+            self.index[k] = list(set(v))
+
 
 
     def get_label(self, statements):
@@ -238,7 +241,7 @@ class EvaluationBenchGNNMultiClass:
         summary = {}
 
         for k, v in accumulated_metrics.items():
-            summary[k] = v / float(eval_size)
+            summary[k] = v / float(eval_size) if k != 'count' else v
 
         return summary
 
@@ -246,7 +249,7 @@ class EvaluationBenchGNNMultiClass:
         # assume left and right have the same keys
         result = {}
         for k, v in left.items():
-            result[k] = left[k] + right[k] / 2.0
+            result[k] = (left[k] + right[k]) / 2.0 if k != 'count' else v
 
         return result
     @staticmethod
@@ -267,14 +270,14 @@ class EvaluationBenchGNNMultiClass:
         for k, v in summary['metrics'].items():
             print(k, ':', "%(v).4f" % {'v': v})
 
-    def compute(self, pred, obj, label):
+    def compute(self, pred, obj, label, results):
         b_range = torch.arange(pred.size()[0], device=self.config['DEVICE'])
         target_pred = pred[b_range, obj]
         pred = torch.where(label.byte(), -torch.ones_like(pred) * 10000000, pred)
         pred[b_range, obj] = target_pred
         ranks = 1 + torch.argsort(torch.argsort(pred, dim=1, descending=True), dim=1, descending=False)[b_range, obj]
 
-        results = {}
+        # results = {}
         ranks = ranks.float()
         results['count'] = torch.numel(ranks) + results.get('count', 0.0)
         results['mr'] = torch.sum(ranks).item() + results.get('mr', 0.0)
@@ -296,7 +299,7 @@ class EvaluationBenchGNNMultiClass:
         with Timer() as timer:
             with torch.no_grad():
                 for position in self.corruption_positions:
-
+                    metr = {}
                     if position == 0:
                         # evaluate "direct"
                         for i in range(self.data_eval.shape[0])[::self.bs]:
@@ -307,7 +310,7 @@ class EvaluationBenchGNNMultiClass:
                                 objs = torch.tensor(eval_batch_direct[:, 2], device=self.config['DEVICE'])
                                 scores = self.model.forward(subs, rels)
                                 labels = torch.tensor(self.get_label(eval_batch_direct), device=self.config['DEVICE'])
-                                metr = self.compute(scores, objs, labels)
+                                metr = self.compute(scores, objs, labels, metr)
 
                             else:
                                 raise NotImplementedError
@@ -322,9 +325,10 @@ class EvaluationBenchGNNMultiClass:
                                 subs = torch.tensor(eval_batch_direct[:, 2], device=self.config['DEVICE'])
                                 rels = torch.tensor(eval_batch_direct[:, 1] + self.config['NUM_RELATIONS'], device=self.config['DEVICE'])
                                 objs = torch.tensor(eval_batch_direct[:, 0], device=self.config['DEVICE'])
+                                eval_batch_reci = torch.cat((subs.unsqueeze(1), rels.unsqueeze(1), objs.unsqueeze(1)), dim=1)
                                 scores = self.model.forward(subs, rels)
-                                labels = torch.tensor(self.get_label(eval_batch_direct), device=self.config['DEVICE'])
-                                metr = self.compute(scores, objs, labels)
+                                labels = torch.tensor(self.get_label(eval_batch_reci), device=self.config['DEVICE'])
+                                metr = self.compute(scores, objs, labels, metr)
                             else:
                                 raise NotImplementedError
                         right_metrics = self._summarize_metrics_(metr, len(self.data_eval))
