@@ -319,8 +319,7 @@ class EvaluationBenchGNNMultiClass:
                 collects the scores, computes the metrics, and reports them.
         """
         metrics = []
-        #self.sampler = self.sampler.reset
-        # TODO iterate over direct and reci triples without sampler, just with [::bs]
+        self.model.eval()
 
         with Timer() as timer:
             with torch.no_grad():
