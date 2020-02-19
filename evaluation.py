@@ -171,6 +171,8 @@ class EvaluationBenchGNNMultiClass:
         self.bs, self.filtered = bs, filtered
         self.model = model
         self.data_eval = data['eval']
+        self.left_eval = self.data_eval[:(self.data_eval.shape[0] // 2), :]  # direct triples
+        self.right_eval = self.data_eval[(self.data_eval.shape[0] // 2):, :]  # reci triples
         self.metrics = metrics
 
         # build an index of train/val/test data
@@ -199,7 +201,7 @@ class EvaluationBenchGNNMultiClass:
             s, r, o, quals = statement[0], statement[1], statement[2], statement[3:] if self.data['eval'].shape[1] >= 3 else None
             reci_rel = r + self.config['NUM_RELATIONS']
             self.index[(s, r, *quals)].append(o) if self.config['SAMPLER_W_QUALIFIERS'] else self.index[(s, r)].append(o)
-            self.index[(o, reci_rel, *quals)].append(s) if self.config['SAMPLER_W_QUALIFIERS'] else self.index[(o, reci_rel)].append(s)
+            # self.index[(o, reci_rel, *quals)].append(s) if self.config['SAMPLER_W_QUALIFIERS'] else self.index[(o, reci_rel)].append(s)
 
         for k, v in self.index.items():
             self.index[k] = list(set(v))
@@ -307,7 +309,7 @@ class EvaluationBenchGNNMultiClass:
         results['count'] = torch.numel(ranks) + results.get('count', 0.0)
         results['mr'] = torch.sum(ranks).item() + results.get('mr', 0.0)
         results['mrr'] = torch.sum(1.0 / ranks).item() + results.get('mrr', 0.0)
-        for k in range(10):
+        for k in [0, 2, 4, 9]:
             results['hits_at {}'.format(k + 1)] = torch.numel(ranks[ranks <= (k + 1)]) + results.get(
                 'hits_at {}'.format(k + 1), 0.0)
         return results
@@ -327,8 +329,8 @@ class EvaluationBenchGNNMultiClass:
                     metr = {}
                     if position == 0:
                         # evaluate "direct"
-                        for i in range(self.data_eval.shape[0])[::self.bs]:
-                            eval_batch_direct = self.data_eval[i: i + self.bs]
+                        for i in range(self.left_eval.shape[0])[::self.bs]:
+                            eval_batch_direct = self.left_eval[i: i + self.bs]
                             if not self.config['SAMPLER_W_QUALIFIERS']:
                                 subs = torch.tensor(eval_batch_direct[:, 0], device=self.config['DEVICE'])
                                 rels = torch.tensor(eval_batch_direct[:, 1], device=self.config['DEVICE'])
@@ -344,13 +346,13 @@ class EvaluationBenchGNNMultiClass:
 
                     elif position == 2:
                         # evaluate "reci"
-                        for i in range(self.data_eval.shape[0])[::self.bs]:
-                            eval_batch_direct = self.data_eval[i: i + self.bs]
+                        for i in range(self.right_eval.shape[0])[::self.bs]:
+                            eval_batch_reci = self.right_eval[i: i + self.bs]
                             if not self.config['SAMPLER_W_QUALIFIERS']:
-                                subs = torch.tensor(eval_batch_direct[:, 2], device=self.config['DEVICE'])
-                                rels = torch.tensor(eval_batch_direct[:, 1] + self.config['NUM_RELATIONS'], device=self.config['DEVICE'])
-                                objs = torch.tensor(eval_batch_direct[:, 0], device=self.config['DEVICE'])
-                                eval_batch_reci = torch.cat((subs.unsqueeze(1), rels.unsqueeze(1), objs.unsqueeze(1)), dim=1)
+                                subs = torch.tensor(eval_batch_reci[:, 0], device=self.config['DEVICE'])
+                                rels = torch.tensor(eval_batch_reci[:, 1], device=self.config['DEVICE'])
+                                objs = torch.tensor(eval_batch_reci[:, 2], device=self.config['DEVICE'])
+                                # eval_batch_reci = torch.cat((subs.unsqueeze(1), rels.unsqueeze(1), objs.unsqueeze(1)), dim=1)
                                 scores = self.model.forward(subs, rels)
                                 labels = torch.tensor(self.get_label(eval_batch_reci), device=self.config['DEVICE'])
                                 metr = self.compute(scores, objs, labels, metr)

@@ -202,6 +202,10 @@ if __name__ == "__main__":
         # add reciprocals to the train data
         reci = DataManager.add_reciprocals(train_data, config)
         train_data.extend(reci)
+        reci_valid = DataManager.add_reciprocals(valid_data, config)
+        valid_data.extend(reci_valid)
+        reci_test = DataManager.add_reciprocals(test_data, config)
+        test_data.extend(reci_test)
     else:
         train_data_gcn, valid_data_gcn, test_data_gcn = None, None, None
 
