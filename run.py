@@ -81,7 +81,8 @@ DEFAULT_CONFIG = {
     'USE_TEST': False,
     'WANDB': False,
     'LABEL_SMOOTHING': 0.0,
-    'SAMPLER_W_QUALIFIERS': False
+    'SAMPLER_W_QUALIFIERS': False,
+    'OPTIMIZER': 'adam'
 }
 
 KBGATARGS = {
@@ -242,7 +243,14 @@ if __name__ == "__main__":
         raise BadParameters(f"Unknown Model Name {config['MODEL_NAME']}")
 
     model.to(config['DEVICE'])
-    optimizer = torch.optim.SGD(model.parameters(), lr=config['LEARNING_RATE'])
+
+    if config['OPTIMIZER'] == 'sgd':
+        optimizer = torch.optim.SGD(model.parameters(), lr=config['LEARNING_RATE'])
+    elif config['OPTIMIZER'] == 'adam':
+        optimizer = torch.optim.Adam(model.parameters(), lr=config['LEARNING_RATE'])
+    else:
+        print("Unexpected optimizer, we support `sgd` or `adam` at the moment")
+        raise NotImplementedError
 
     if config['WANDB']:
         wandb.init(project="wikidata-embeddings")
