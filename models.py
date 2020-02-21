@@ -1081,7 +1081,7 @@ class CompQGCNConvLayer(MessagePassing):
         qualifier_emb = torch.mm(qualifier_emb.sum(axis=0), self.w_q)
 
         if type == 'sum':
-            return alpha * rel_part_emb + (1 - alpha) * qualifier_emb  # TODO pass through W_q ?
+            return alpha * rel_part_emb + (1 - alpha) * qualifier_emb
 
         else:
             raise NotImplementedError

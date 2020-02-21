@@ -188,7 +188,7 @@ if __name__ == "__main__":
         hashes = None
 
     # Exclude entities which don't appear in the dataset. E.g. entity nr. 455 may never appear.
-    if DEFAULT_CONFIG['ENT_POS_FILTERED']:
+    if config['ENT_POS_FILTERED']:
         ent_excluded_from_corr = DataManager.gather_missing_entities(
             data=train_data + valid_data + test_data,
             positions=config['CORRUPTION_POSITIONS'],

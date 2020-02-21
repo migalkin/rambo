@@ -174,6 +174,7 @@ class EvaluationBenchGNNMultiClass:
         self.left_eval = self.data_eval[:(self.data_eval.shape[0] // 2), :]  # direct triples
         self.right_eval = self.data_eval[(self.data_eval.shape[0] // 2):, :]  # reci triples
         self.metrics = metrics
+        self.excluding_entities = excluding_entities if config['ENT_POS_FILTERED'] else []
 
         # build an index of train/val/test data
         self.data = data
@@ -272,7 +273,7 @@ class EvaluationBenchGNNMultiClass:
         for k, v in summary['metrics'].items():
             print(k, ':', "%(v).4f" % {'v': v})
 
-    def compute(self, pred, obj, label, results, ignored_entities=[]):
+    def compute(self, pred, obj, label, results):
         """
             Discard the predictions for all objects not in label (not currently evaluated)
 
@@ -285,6 +286,7 @@ class EvaluationBenchGNNMultiClass:
         :param results:
         :return:
         """
+        ignored_entities = self.excluding_entities  # remove qualifier only entities if the flag says so
 
         b_range = torch.arange(pred.size()[0], device=self.config['DEVICE'])
         irrelevant = label.clone()
