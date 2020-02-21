@@ -969,7 +969,10 @@ class CompQGCNConvLayer(MessagePassing):
         self.w_rel = get_param((in_channels, out_channels))  # (100,200)
 
         if self.p['STATEMENT_LEN'] != 3:
-            self.w_q = get_param((in_channels, in_channels))  # new for quals setup
+            if self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'sum':
+                self.w_q = get_param((in_channels, in_channels))  # new for quals setup
+            elif self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'concat':
+                self.w_q = get_param((2 * in_channels, in_channels))  # need 2x size due to the concat operation
 
         self.loop_rel = get_param((1, in_channels))  # (1,100)
         self.loop_ent = get_param((1, in_channels))  # new
@@ -1067,7 +1070,7 @@ class CompQGCNConvLayer(MessagePassing):
         # @TODO: check later
         return self.rel_transform(qualifier_ent, qualifier_rel)  # check the order
 
-    def qualifier_aggregate(self, qualifier_emb, rel_part_emb, type='sum', alpha=0.5):
+    def qualifier_aggregate(self, qualifier_emb, rel_part_emb, alpha=0.5):
         """
             Aggregates the qualifier matrix (3, edge_index, emb_dim)
         :param qualifier_emb:
@@ -1078,10 +1081,15 @@ class CompQGCNConvLayer(MessagePassing):
 
         @TODO: Check for activation over qualifier_emb
         """
-        qualifier_emb = torch.mm(qualifier_emb.sum(axis=0), self.w_q)
+        # qualifier_emb = torch.mm(qualifier_emb.sum(axis=0), self.w_q)
 
-        if type == 'sum':
-            return alpha * rel_part_emb + (1 - alpha) * qualifier_emb
+        if self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'sum':
+            qualifier_emb = torch.mm(qualifier_emb.sum(axis=0), self.w_q)  # [N_EDGES / 2 x EMB_DIM]
+            return alpha * rel_part_emb + (1 - alpha) * qualifier_emb      # [N_EDGES / 2 x EMB_DIM]
+        elif self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'concat':
+            qualifier_emb = qualifier_emb.sum(axis=0)                  # [N_EDGES / 2 x EMB_DIM]
+            agg_rel = torch.cat((rel_part_emb, qualifier_emb), dim=1)  # [N_EDGES / 2 x 2 * EMB_DIM]
+            return torch.mm(agg_rel, self.w_q)                         # [N_EDGES / 2 x EMB_DIM]
 
         else:
             raise NotImplementedError

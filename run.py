@@ -100,6 +100,7 @@ COMPGCNARGS = {
     'BIAS': False,
     'OPN': 'corr',
     'TRIPLE_QUAL_WEIGHT': 0.8,
+    'QUAL_AGGREGATE': 'sum',
 
     # For TransE
     'GAMMA': 40.0,
