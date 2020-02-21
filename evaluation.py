@@ -341,7 +341,7 @@ class EvaluationBenchGNNMultiClass:
 
                             else:
                                 raise NotImplementedError
-                        left_metrics = self._summarize_metrics_(metr, len(self.data_eval))
+                        left_metrics = self._summarize_metrics_(metr, len(self.left_eval))
 
 
                     elif position == 2:
@@ -358,7 +358,7 @@ class EvaluationBenchGNNMultiClass:
                                 metr = self.compute(scores, objs, labels, metr)
                             else:
                                 raise NotImplementedError
-                        right_metrics = self._summarize_metrics_(metr, len(self.data_eval))
+                        right_metrics = self._summarize_metrics_(metr, len(self.right_eval))
 
 
         # Spruce up the summary with more information
