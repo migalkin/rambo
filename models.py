@@ -1117,7 +1117,7 @@ class CompQGCNConvLayer(MessagePassing):
         # @TODO: pass it through a parameter layer
         # Pass it through a aggregate layer
 
-        return self.qualifier_aggregate(qualifier_emb, rel_part_emb)
+        return self.qualifier_aggregate(qualifier_emb, rel_part_emb, alpha=self.p['COMPGCNARGS']['TRIPLE_QUAL_WEIGHT'])
 
     # return qualifier_emb
     def message(self, x_j, edge_type, rel_embed, edge_norm, mode, ent_embed=None, qualifier_ent=None,

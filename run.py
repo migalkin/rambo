@@ -99,6 +99,7 @@ COMPGCNARGS = {
     'HID_DROP': 0.3,
     'BIAS': False,
     'OPN': 'corr',
+    'TRIPLE_QUAL_WEIGHT': 0.8,
 
     # For TransE
     'GAMMA': 40.0,
