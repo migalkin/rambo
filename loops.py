@@ -688,12 +688,12 @@ def training_loop_gcn(epochs: int,
                         wandb.log({
                             'epoch': e,
                             'loss': float(np.mean(per_epoch_loss)),
-                            'val_acc_b': float(per_epoch_vl_acc),
-                            'val_mrr_b': float(per_epoch_vl_mrr),
-                            'val_mr_b': float(per_epoch_vl_mr),
-                            'val_hits@3_b': float(per_epoch_vl_hits_3),
-                            'val_hits@5_b': float(per_epoch_vl_hits_5),
-                            'val_hits@10_b': float(per_epoch_vl_hits_10),
+                            'val_acc': float(per_epoch_vl_acc),
+                            'val_mrr': float(per_epoch_vl_mrr),
+                            'val_mr': float(per_epoch_vl_mr),
+                            'val_hits@3': float(per_epoch_vl_hits_3),
+                            'val_hits@5': float(per_epoch_vl_hits_5),
+                            'val_hits@10': float(per_epoch_vl_hits_10),
                         })
 
                 # We might wanna save the model, too
