@@ -14,73 +14,97 @@ from mytorch.utils.goodies import FancyDict
 # from utils import *
 
 
-def _conv_to_our_format_(data):
+def _conv_to_our_format_(data, filter_literals=True):
     conv_data = []
+    dropped_statements = 0
+    dropped_quals = 0
     for datum in tqdm(data):
-        conv_datum = []
+        try:
+            conv_datum = []
 
-        # Get head and tail rels
-        head, tail, rel_h, rel_t = None, None, None, None
-        for rel, val in datum.items():
-            if rel[-2:] == '_h' and type(val) is str:
-                head = val
-                rel_h = rel[:-2]
-            if rel[-2:] == '_t' and type(val) is str:
-                tail = val
-                rel_t = rel[:-2]
+            # Get head and tail rels
+            head, tail, rel_h, rel_t = None, None, None, None
+            for rel, val in datum.items():
+                if rel[-2:] == '_h' and type(val) is str:
+                    head = val
+                    rel_h = rel[:-2]
+                if rel[-2:] == '_t' and type(val) is str:
+                    tail = val
+                    rel_t = rel[:-2]
+                    if filter_literals and "http://" in tail:
+                        dropped_statements += 1
+                        raise Exception
 
-        assert head and tail and rel_h and rel_t, f"Weird data point. Some essentials not found. Quitting\nD:{datum}"
-        assert rel_h == rel_t, f"Weird data point. Head and Tail rels are different. Quitting\nD: {datum}"
+            assert head and tail and rel_h and rel_t, f"Weird data point. Some essentials not found. Quitting\nD:{datum}"
+            assert rel_h == rel_t, f"Weird data point. Head and Tail rels are different. Quitting\nD: {datum}"
 
-        # Drop this bs
-        datum.pop(rel_h + '_h')
-        datum.pop(rel_t + '_t')
-        datum.pop('N')
-        conv_datum += [head, rel_h, tail]
+            # Drop this bs
+            datum.pop(rel_h + '_h')
+            datum.pop(rel_t + '_t')
+            datum.pop('N')
+            conv_datum += [head, rel_h, tail]
 
-        # Get all qualifiers
-        for k, v in datum.items():
-            for _v in v:
-                conv_datum += [k, _v]
+            # Get all qualifiers
+            for k, v in datum.items():
+                for _v in v:
+                    if filter_literals and "http://" in _v:
+                        dropped_quals += 1
+                        continue
+                    conv_datum += [k, _v]
 
-        conv_data.append(tuple(conv_datum))
+            conv_data.append(tuple(conv_datum))
+        except Exception:
+            continue
+    print(f"\n Dropped {dropped_statements} statements and {dropped_quals} quals with literals \n ")
     return conv_data
 
 
-def _conv_to_our_quint_format_(data):
+def _conv_to_our_quint_format_(data, filter_literals=True):
     conv_data = []
+    dropped_statements = 0
+    dropped_quals = 0
     for datum in tqdm(data):
-        conv_datum = []
+        try:
+            conv_datum = []
 
-        # Get head and tail rels
-        head, tail, rel_h, rel_t = None, None, None, None
-        for rel, val in datum.items():
-            if rel[-2:] == '_h' and type(val) is str:
-                head = val
-                rel_h = rel[:-2]
-            if rel[-2:] == '_t' and type(val) is str:
-                tail = val
-                rel_t = rel[:-2]
+            # Get head and tail rels
+            head, tail, rel_h, rel_t = None, None, None, None
+            for rel, val in datum.items():
+                if rel[-2:] == '_h' and type(val) is str:
+                    head = val
+                    rel_h = rel[:-2]
+                if rel[-2:] == '_t' and type(val) is str:
+                    tail = val
+                    rel_t = rel[:-2]
+                    if filter_literals and "http://" in tail:
+                        dropped_statements += 1
+                        raise Exception
 
-        assert head and tail and rel_h and rel_t, f"Weird data point. Some essentials not found. Quitting\nD:{datum}"
-        assert rel_h == rel_t, f"Weird data point. Head and Tail rels are different. Quitting\nD: {datum}"
+            assert head and tail and rel_h and rel_t, f"Weird data point. Some essentials not found. Quitting\nD:{datum}"
+            assert rel_h == rel_t, f"Weird data point. Head and Tail rels are different. Quitting\nD: {datum}"
 
-        # Drop this bs
-        datum.pop(rel_h + '_h')
-        datum.pop(rel_t + '_t')
-        datum.pop('N')
-        conv_datum += [head, rel_h, tail, None, None]
+            # Drop this bs
+            datum.pop(rel_h + '_h')
+            datum.pop(rel_t + '_t')
+            datum.pop('N')
+            conv_datum += [head, rel_h, tail, None, None]
 
-        if len(datum.items()) == 0:
-            conv_data.append(tuple(conv_datum))
-        else:
-            # Get all qualifiers
-            for k, v in datum.items():
-                conv_datum[3] = k
-                for _v in v:
-                    conv_datum[4] = _v
-                    conv_data.append(tuple(conv_datum))
+            if len(datum.items()) == 0:
+                conv_data.append(tuple(conv_datum))
+            else:
+                # Get all qualifiers
+                for k, v in datum.items():
+                    conv_datum[3] = k
+                    for _v in v:
+                        if filter_literals and "http://" in _v:
+                            dropped_quals += 1
+                            continue
+                        conv_datum[4] = _v
+                        conv_data.append(tuple(conv_datum))
 
+        except Exception:
+            continue
+    print(f"\n Dropped {dropped_statements} statements and {dropped_quals} quals with literals \n ")
     return conv_data
 
 
@@ -108,6 +132,19 @@ def _pad_statements_(data: List[list], maxlen: int) -> List[list]:
         statement in data]
     return result
 
+def clean_literals(data: List[list]) -> List[list]:
+    """
+
+    :param data: triples [s, p, o] with possible literals
+    :return: triples [s,p,o] without literals
+
+    """
+    result = []
+    for triple in data:
+        if "http://" not in triple[2]:
+            result.append(triple)
+
+    return result
 
 def load_wd15k_quints() -> Dict:
     """
@@ -919,7 +956,7 @@ def load_wd15k_qonly_66_triples() -> Dict:
             "n_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
-def load_wikipeople_quints():
+def load_wikipeople_quints(filter_literals=True):
     # Load data from disk
     DIRNAME = Path('./data/raw_data/wikipeople')
 
@@ -941,9 +978,9 @@ def load_wikipeople_quints():
 
     # raw_trn[:-10], raw_tst[:10], raw_val[:10]
     # Conv data to our format
-    conv_trn, conv_tst, conv_val = _conv_to_our_quint_format_(raw_trn), \
-                                   _conv_to_our_quint_format_(raw_tst), \
-                                   _conv_to_our_quint_format_(raw_val)
+    conv_trn, conv_tst, conv_val = _conv_to_our_quint_format_(raw_trn, filter_literals=filter_literals), \
+                                   _conv_to_our_quint_format_(raw_tst, filter_literals=filter_literals), \
+                                   _conv_to_our_quint_format_(raw_val, filter_literals=filter_literals)
 
     # quints_entities, quints_predicates = _get_uniques_(train_data=conv_trn,
     #                                                          test_data=conv_tst,
@@ -993,7 +1030,7 @@ def load_wikipeople_quints():
             "n_relations": len(q_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
-def load_wikipeople_triples():
+def load_wikipeople_triples(filter_literals=True):
     # Load data from disk
     WP_DIR = PARSED_DATA_DIR / 'wikipeople'
 
@@ -1005,6 +1042,12 @@ def load_wikipeople_triples():
         test_triples = pickle.load(f)
 
     triples_entities, triples_predicates = [], []
+
+    if filter_literals:
+        train_triples = clean_literals(train_triples)
+        valid_triples = clean_literals(valid_triples)
+        test_triples = clean_literals(test_triples)
+
 
     for triple in train_triples + valid_triples + test_triples:
         triples_entities += [triple[0], triple[2]]
@@ -1021,11 +1064,12 @@ def load_wikipeople_triples():
     valid = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in valid_triples]
     test = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in test_triples]
 
+
     return {"train": train, "valid": valid, "test": test, "n_entities": len(triples_entities),
             "n_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
-def load_wikipeople_statements(maxlen=17) -> Dict:
+def load_wikipeople_statements(maxlen=17, filter_literals=True) -> Dict:
     """
         :return: train/valid/test splits for the wikipeople dataset in its quints form
     """
@@ -1049,9 +1093,9 @@ def load_wikipeople_statements(maxlen=17) -> Dict:
 
     # raw_trn[:-10], raw_tst[:10], raw_val[:10]
     # Conv data to our format
-    conv_trn, conv_tst, conv_val = _conv_to_our_format_(raw_trn), \
-                                   _conv_to_our_format_(raw_tst), \
-                                   _conv_to_our_format_(raw_val)
+    conv_trn, conv_tst, conv_val = _conv_to_our_format_(raw_trn, filter_literals=filter_literals), \
+                                   _conv_to_our_format_(raw_tst, filter_literals=filter_literals), \
+                                   _conv_to_our_format_(raw_val, filter_literals=filter_literals)
 
     # Get uniques
     statement_entities, statement_predicates = _get_uniques_(train_data=conv_trn,
@@ -1393,3 +1437,11 @@ if __name__ == "__main__":
     # nr = ds['n_relations']
     # print("Magic Mike!")
     ...
+
+    # ds = load_wikipeople_quints(filter_literals=True)
+    # tr = ds['train']
+    # vl = ds['valid']
+    # ts = ds['test']
+    # ne = ds['n_entities']
+    # nr = ds['n_relations']
+    # print("Magic Mike!")
