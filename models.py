@@ -1107,11 +1107,14 @@ class CompQGCNConvLayer(MessagePassing):
         """
 
         # Step1 - embed them
-        qualifier_emb_rel = rel_embed[qualifier_rel.reshape(1, -1)]. \
-            reshape(qualifier_rel.shape[0], qualifier_rel.shape[1], -1)
+        # qualifier_emb_rel = rel_embed[qualifier_rel.reshape(1, -1)]. \
+        #     reshape(qualifier_rel.shape[0], qualifier_rel.shape[1], -1)
+        #
+        # qualifier_emb_ent = ent_embed[qualifier_ent.reshape(1, -1)]. \
+        #     reshape(qualifier_ent.shape[0], qualifier_ent.shape[1], -1)
 
-        qualifier_emb_ent = ent_embed[qualifier_ent.reshape(1, -1)]. \
-            reshape(qualifier_ent.shape[0], qualifier_ent.shape[1], -1)
+        qualifier_emb_rel = rel_embed[qualifier_rel]
+        qualifier_emb_ent = ent_embed[qualifier_ent]
 
         rel_part_emb = rel_embed[edge_type]
 

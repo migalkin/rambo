@@ -63,8 +63,10 @@ class MultiClassSampler:
         self.build_index()
         self.shuffle()
 
+
     def shuffle(self):
-        npr.shuffle(self.data)
+        # npr.shuffle(self.data)
+        npr.shuffle(self.index)
 
     def build_index(self):
         self.index = defaultdict(list)
@@ -82,6 +84,7 @@ class MultiClassSampler:
         # do something
         self.i = 0
         self.shuffle()
+        self.it = iter(self.index.items())
 
         return self
 
@@ -107,8 +110,18 @@ class MultiClassSampler:
 
         return y
 
+    def get_simpler_label(self, labels):
+        y = np.zeros((1, self.n_entities), dtype=np.float32)
+        y[labels] = 1.0
+        if self.lbl_smooth != 0.0:
+            y = (1.0 - self.lbl_smooth)*y + (1.0 / self.n_entities)
+
+        return y
+
+
     def __len__(self):
-        return self.data.shape[0] // self.bs
+        # return self.data.shape[0] // self.bs
+        return len(self.index) // self.bs
 
     def __iter__(self):
         self.i = 0
@@ -118,13 +131,26 @@ class MultiClassSampler:
         """
             Each time, take `bs` pos
         """
-        if self.i >= self.data.shape[0]:
+        # if self.i >= self.data.shape[0]:
+        #     print("Should stop")
+        #     raise StopIteration
+        #
+        # _statements = self.data[self.i: min(self.i + self.bs, len(self.data) - 1)]
+        # _labels = self.get_label(_statements)
+        # self.i = min(self.i + self.bs, self.data.shape[0])
+        # return _statements, _labels
+        if self.i >= len(self.index):
             print("Should stop")
             raise StopIteration
-
-        _statements = self.data[self.i: min(self.i + self.bs, len(self.data) - 1)]
-        _labels = self.get_label(_statements)
-        self.i = min(self.i + self.bs, self.data.shape[0])
+        # take bs size from the iter if limit is not reached
+        to_take = self.bs if self.i + self.bs <= len(self.index) else len(self.index) - self.i
+        # limit = min(self.i + self.bs, len(self.index) - 1)
+        _statements = [next(self.it) for k in range(to_take)]
+        _main = [x[0] for x in _statements]
+        _labels = [self.get_simpler_label(x[1]) for x in _statements]
+        #  _statements = self.index[self.i: min(self.i + self.bs, len(self.data) - 1)]
+        #_ labels = self.get_label(_statements)
+        self.i = min(self.i + self.bs, len(self.index))
         return _statements, _labels
 
 # Make data iterator -> Modify Simple Iterator from mytorch
