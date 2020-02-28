@@ -101,6 +101,7 @@ COMPGCNARGS = {
     'OPN': 'corr',
     'TRIPLE_QUAL_WEIGHT': 0.8,
     'QUAL_AGGREGATE': 'sum',
+    'QUAL_OPN': 'sub',
 
     # For TransE
     'GAMMA': 40.0,

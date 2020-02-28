@@ -1065,10 +1065,18 @@ class CompQGCNConvLayer(MessagePassing):
     def qual_transform(self, qualifier_ent, qualifier_rel):
         """
 
-        :return:
+        :return: 
         """
-        # @TODO: check later
-        return self.rel_transform(qualifier_ent, qualifier_rel)  # check the order
+        if self.p['COMPGCNARGS']['QUAL_OPN'] == 'corr':
+            trans_embed = ccorr(qualifier_ent, qualifier_rel)
+        elif self.p['COMPGCNARGS']['QUAL_OPN'] == 'sub':
+            trans_embed = qualifier_ent - qualifier_rel
+        elif self.p['COMPGCNARGS']['QUAL_OPN'] == 'mult':
+            trans_embed = qualifier_ent * qualifier_rel
+        else:
+            raise NotImplementedError
+
+        return trans_embed
 
     def qualifier_aggregate(self, qualifier_emb, rel_part_emb, alpha=0.5):
         """
