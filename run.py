@@ -102,6 +102,7 @@ COMPGCNARGS = {
     'TRIPLE_QUAL_WEIGHT': 0.8,
     'QUAL_AGGREGATE': 'sum',
     'QUAL_OPN': 'sub',
+    'SUBBATCH': 80000,
 
     # For TransE
     'GAMMA': 40.0,

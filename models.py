@@ -1029,17 +1029,43 @@ class CompQGCNConvLayer(MessagePassing):
                                      qualifier_rel=self.out_index_qual_rel)
 
         else:
-            in_res = self.propagate('add', self.in_index, x=x, edge_type=self.in_type,
-                                    rel_embed=rel_embed, edge_norm=self.in_norm, mode='in',
-                                    ent_embed=None, qualifier_ent=None, qualifier_rel=None)
+            if self.p['COMPGCNARGS']['SUBBATCH'] == 0:
+                in_res = self.propagate('add', self.in_index, x=x, edge_type=self.in_type,
+                                        rel_embed=rel_embed, edge_norm=self.in_norm, mode='in',
+                                        ent_embed=None, qualifier_ent=None, qualifier_rel=None)
 
-            loop_res = self.propagate('add', self.loop_index, x=x, edge_type=self.loop_type,
-                                      rel_embed=rel_embed, edge_norm=None, mode='loop',
-                                      ent_embed=None, qualifier_ent=None, qualifier_rel=None)
+                loop_res = self.propagate('add', self.loop_index, x=x, edge_type=self.loop_type,
+                                          rel_embed=rel_embed, edge_norm=None, mode='loop',
+                                          ent_embed=None, qualifier_ent=None, qualifier_rel=None)
 
-            out_res = self.propagate('add', self.out_index, x=x, edge_type=self.out_type,
-                                     rel_embed=rel_embed, edge_norm=self.out_norm, mode='out',
-                                     ent_embed=None, qualifier_ent=None, qualifier_rel=None)
+                out_res = self.propagate('add', self.out_index, x=x, edge_type=self.out_type,
+                                         rel_embed=rel_embed, edge_norm=self.out_norm, mode='out',
+                                         ent_embed=None, qualifier_ent=None, qualifier_rel=None)
+            else:
+                loop_res = self.propagate('add', self.loop_index, x=x, edge_type=self.loop_type,
+                                          rel_embed=rel_embed, edge_norm=None, mode='loop',
+                                          ent_embed=None, qualifier_ent=None, qualifier_rel=None)
+                in_res = torch.zeros((x.shape[0], self.out_channels))
+                out_res = torch.zeros((x.shape[0], self.out_channels))
+                num_batches = (num_edges // self.p['COMPGCNARGS']['SUBBATCH']) + 1
+                for i in range(num_edges)[::self.p['COMPGCNARGS']['SUBBATCH']]:
+                    subbatch_in_index = self.in_index[:, i: i + self.p['COMPGCNARGS']['SUBBATCH']]
+                    subbatch_in_type = self.in_type[i: i + self.p['COMPGCNARGS']['SUBBATCH']]
+                    subbatch_in_norm = self.in_norm[i: i + self.p['COMPGCNARGS']['SUBBATCH']]
+                    subbatch_out_index = self.out_index[:, i: i + self.p['COMPGCNARGS']['SUBBATCH']]
+                    subbatch_out_type = self.out_type[i: i + self.p['COMPGCNARGS']['SUBBATCH']]
+                    subbatch_out_norm = self.out_norm[i: i + self.p['COMPGCNARGS']['SUBBATCH']]
+
+                    in_res += self.propagate('add', subbatch_in_index, x=x, edge_type=subbatch_in_type,
+                                        rel_embed=rel_embed, edge_norm=subbatch_in_norm, mode='in',
+                                        ent_embed=None, qualifier_ent=None, qualifier_rel=None)
+                    out_res += self.propagate('add', subbatch_out_index, x=x, edge_type=subbatch_out_type,
+                                         rel_embed=rel_embed, edge_norm=subbatch_out_norm, mode='out',
+                                         ent_embed=None, qualifier_ent=None, qualifier_rel=None)
+                in_res = torch.div(in_res, float(num_batches))
+                out_res = torch.div(out_res, float(num_batches))
+
+
 
         out = self.drop(in_res) * (1 / 3) + self.drop(out_res) * (1 / 3) + loop_res * (1 / 3)
 
@@ -1065,7 +1091,7 @@ class CompQGCNConvLayer(MessagePassing):
     def qual_transform(self, qualifier_ent, qualifier_rel):
         """
 
-        :return: 
+        :return:
         """
         if self.p['COMPGCNARGS']['QUAL_OPN'] == 'corr':
             trans_embed = ccorr(qualifier_ent, qualifier_rel)
