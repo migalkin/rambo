@@ -1045,8 +1045,8 @@ class CompQGCNConvLayer(MessagePassing):
                 loop_res = self.propagate('add', self.loop_index, x=x, edge_type=self.loop_type,
                                           rel_embed=rel_embed, edge_norm=None, mode='loop',
                                           ent_embed=None, qualifier_ent=None, qualifier_rel=None)
-                in_res = torch.zeros((x.shape[0], self.out_channels))
-                out_res = torch.zeros((x.shape[0], self.out_channels))
+                in_res = torch.zeros((x.shape[0], self.out_channels)).to(self.device)
+                out_res = torch.zeros((x.shape[0], self.out_channels)).to(self.device)
                 num_batches = (num_edges // self.p['COMPGCNARGS']['SUBBATCH']) + 1
                 for i in range(num_edges)[::self.p['COMPGCNARGS']['SUBBATCH']]:
                     subbatch_in_index = self.in_index[:, i: i + self.p['COMPGCNARGS']['SUBBATCH']]
