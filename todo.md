@@ -27,4 +27,4 @@
 3. Wire up the JF17K dataset
 4. Add more argparse options to edit directly the `compgcn` hyperparams 
 5. Add a new sampler and eval bench for predicting qualifier enities (and relations)
-6. Optimizations in the gcn layer to speed the things up
+6. [DONE] Optimizations in the gcn layer to speed the things up [significant speed improvements, but annoying segfault]
