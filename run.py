@@ -101,8 +101,9 @@ COMPGCNARGS = {
     'OPN': 'corr',
     'TRIPLE_QUAL_WEIGHT': 0.8,
     'QUAL_AGGREGATE': 'sum',
-    'QUAL_OPN': 'sub',
-    'SUBBATCH': 80000,
+    'QUAL_OPN': 'corr',
+    'SUBBATCH': 0,
+    'QUAL_REPR': 'sparse',  # sparse or full
 
     # For TransE
     'GAMMA': 40.0,
@@ -201,9 +202,17 @@ if __name__ == "__main__":
 
     if config['MODEL_NAME'].lower().startswith('compgcn'):
         # Replace the data with their graph repr formats
-        train_data_gcn = DataManager.get_graph_repr(train_data, config)
-        valid_data_gcn = DataManager.get_graph_repr(valid_data, config)
-        test_data_gcn = DataManager.get_graph_repr(test_data, config)
+        if config['COMPGCNARGS']['QUAL_REPR'] == 'full':
+            train_data_gcn = DataManager.get_graph_repr(train_data, config)
+            valid_data_gcn = DataManager.get_graph_repr(valid_data, config)
+            test_data_gcn = DataManager.get_graph_repr(test_data, config)
+        elif config['COMPGCNARGS']['QUAL_REPR'] == 'sparse':
+            train_data_gcn = DataManager.get_alternative_graph_repr(train_data, config)
+            valid_data_gcn = DataManager.get_alternative_graph_repr(valid_data, config)
+            test_data_gcn = DataManager.get_alternative_graph_repr(test_data, config)
+        else:
+            print("Supported QUAL_REPR are `full` or `sparse`")
+            raise NotImplementedError
         # add reciprocals to the train data
         reci = DataManager.add_reciprocals(train_data, config)
         train_data.extend(reci)

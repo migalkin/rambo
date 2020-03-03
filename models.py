@@ -749,6 +749,7 @@ class CompGCNBase(torch.nn.Module):
         # self.bias = config['COMPGCNARGS']['BIAS']
         self.model_nm = config['MODEL_NAME'].lower()
         self.triple_mode = config['STATEMENT_LEN'] == 3
+        self.qual_mode = config['COMPGCNARGS']['QUAL_REPR']
 
     def loss(self, pred, true_label):
         return self.bceloss(pred, true_label)
@@ -765,8 +766,11 @@ class CompQGCNEncoder(CompGCNBase):
         self.edge_type = torch.tensor(graph_repr['edge_type'], dtype=torch.long, device=self.device)
 
         if not self.triple_mode:
-            self.qual_rel = torch.tensor(graph_repr['qual_rel'], dtype=torch.long, device=self.device)
-            self.qual_ent = torch.tensor(graph_repr['qual_ent'], dtype=torch.long, device=self.device)
+            if self.qual_mode == "full":
+                self.qual_rel = torch.tensor(graph_repr['qual_rel'], dtype=torch.long, device=self.device)
+                self.qual_ent = torch.tensor(graph_repr['qual_ent'], dtype=torch.long, device=self.device)
+            elif self.qual_mode == "sparse":
+                self.quals = torch.tensor(graph_repr['quals'], dtype=torch.long, device=self.device)
 
         self.gcn_dim = self.emb_dim if self.n_layer == 1 else self.gcn_dim
         """
@@ -817,17 +821,34 @@ class CompQGCNEncoder(CompGCNBase):
             else torch.cat([self.init_rel, -self.init_rel], dim=0)
 
         if not self.triple_mode:
-            # x, edge_index, edge_type, rel_embed, qual_ent, qual_rel
-            x, r = self.conv1(x=self.init_embed, edge_index=self.edge_index,
-                              edge_type=self.edge_type, rel_embed=r,
-                              qualifier_ent=self.qual_ent,
-                              qualifier_rel=self.qual_rel)
+            if self.qual_mode == "full":
+                # x, edge_index, edge_type, rel_embed, qual_ent, qual_rel
+                x, r = self.conv1(x=self.init_embed, edge_index=self.edge_index,
+                                  edge_type=self.edge_type, rel_embed=r,
+                                  qualifier_ent=self.qual_ent,
+                                  qualifier_rel=self.qual_rel,
+                                  quals=None)
 
-            x = drop1(x)
-            x, r = self.conv2(x=x, edge_index=self.edge_index,
-                              edge_type=self.edge_type, rel_embed=r,
-                              qualifier_ent=self.qual_ent,
-                              qualifier_rel=self.qual_rel) if self.n_layer == 2 else (x, r)
+                x = drop1(x)
+                x, r = self.conv2(x=x, edge_index=self.edge_index,
+                                  edge_type=self.edge_type, rel_embed=r,
+                                  qualifier_ent=self.qual_ent,
+                                  qualifier_rel=self.qual_rel,
+                                  quals=None) if self.n_layer == 2 else (x, r)
+            elif self.qual_mode == "sparse":
+                # x, edge_index, edge_type, rel_embed, qual_ent, qual_rel
+                x, r = self.conv1(x=self.init_embed, edge_index=self.edge_index,
+                                  edge_type=self.edge_type, rel_embed=r,
+                                  qualifier_ent=None,
+                                  qualifier_rel=None,
+                                  quals=self.quals)
+
+                x = drop1(x)
+                x, r = self.conv2(x=x, edge_index=self.edge_index,
+                                  edge_type=self.edge_type, rel_embed=r,
+                                  qualifier_ent=None,
+                                  qualifier_rel=None,
+                                  quals=self.quals) if self.n_layer == 2 else (x, r)
 
         else:
             x, r = self.conv1(x=self.init_embed, edge_index=self.edge_index,
@@ -983,7 +1004,7 @@ class CompQGCNConvLayer(MessagePassing):
         if self.p['COMPGCNARGS']['BIAS']: self.register_parameter('bias', Parameter(
             torch.zeros(out_channels)))
 
-    def forward(self, x, edge_index, edge_type, rel_embed, qualifier_ent=None, qualifier_rel=None):
+    def forward(self, x, edge_index, edge_type, rel_embed, qualifier_ent=None, qualifier_rel=None, quals=None):
         if self.device is None:
             self.device = edge_index.device
 
@@ -995,11 +1016,17 @@ class CompQGCNConvLayer(MessagePassing):
         self.in_type, self.out_type = edge_type[:num_edges], edge_type[num_edges:]
 
         if self.p['STATEMENT_LEN'] != 3:
-            self.in_index_qual_ent, self.out_index_qual_ent = qualifier_ent[:, :num_edges], \
-                                                              qualifier_ent[:, num_edges:]
+            if self.p['COMPGCNARGS']['QUAL_REPR'] == "full":
+                self.in_index_qual_ent, self.out_index_qual_ent = qualifier_ent[:, :num_edges], \
+                                                                  qualifier_ent[:, num_edges:]
 
-            self.in_index_qual_rel, self.out_index_qual_rel = qualifier_rel[:, :num_edges], \
-                                                              qualifier_rel[:, num_edges:]
+                self.in_index_qual_rel, self.out_index_qual_rel = qualifier_rel[:, :num_edges], \
+                                                                  qualifier_rel[:, num_edges:]
+            elif self.p['COMPGCNARGS']['QUAL_REPR'] == "sparse":
+                num_quals = quals.size(1) // 2
+                self.in_index_qual_ent, self.out_index_qual_ent = quals[1, :num_quals], quals[1, num_quals:]
+                self.in_index_qual_rel, self.out_index_qual_rel = quals[0, :num_quals], quals[0, num_quals:]
+                self.quals_index_in, self.quals_index_out = quals[2, :num_quals], quals[2, num_quals:]
 
         # Self edges between all the nodes
         self.loop_index = torch.stack([torch.arange(num_ent), torch.arange(num_ent)]).to(self.device)
@@ -1014,48 +1041,81 @@ class CompQGCNConvLayer(MessagePassing):
 
         if self.p['STATEMENT_LEN'] != 3:
 
-            if self.p['COMPGCNARGS']['SUBBATCH'] == 0:
+            if self.p['COMPGCNARGS']['QUAL_REPR'] == "full":
 
-                in_res = self.propagate('add', self.in_index, x=x, edge_type=self.in_type,
-                                        rel_embed=rel_embed, edge_norm=self.in_norm, mode='in',
-                                        ent_embed=x, qualifier_ent=self.in_index_qual_ent,
-                                        qualifier_rel=self.in_index_qual_rel)
+                if self.p['COMPGCNARGS']['SUBBATCH'] == 0:
 
-                loop_res = self.propagate('add', self.loop_index, x=x, edge_type=self.loop_type,
-                                          rel_embed=rel_embed, edge_norm=None, mode='loop',
-                                          ent_embed=None, qualifier_ent=None, qualifier_rel=None)
+                    in_res = self.propagate('add', self.in_index, x=x, edge_type=self.in_type,
+                                            rel_embed=rel_embed, edge_norm=self.in_norm, mode='in',
+                                            ent_embed=x, qualifier_ent=self.in_index_qual_ent,
+                                            qualifier_rel=self.in_index_qual_rel, qual_index=None)
 
-                out_res = self.propagate('add', self.out_index, x=x, edge_type=self.out_type,
-                                         rel_embed=rel_embed, edge_norm=self.out_norm, mode='out',
-                                         ent_embed=x, qualifier_ent=self.out_index_qual_ent,
-                                         qualifier_rel=self.out_index_qual_rel)
-            else:
-                loop_res = self.propagate('add', self.loop_index, x=x, edge_type=self.loop_type,
-                                          rel_embed=rel_embed, edge_norm=None, mode='loop',
-                                          ent_embed=None, qualifier_ent=None, qualifier_rel=None)
-                in_res = torch.zeros((x.shape[0], self.out_channels)).to(self.device)
-                out_res = torch.zeros((x.shape[0], self.out_channels)).to(self.device)
-                num_batches = (num_edges // self.p['COMPGCNARGS']['SUBBATCH']) + 1
-                for i in range(num_edges)[::self.p['COMPGCNARGS']['SUBBATCH']]:
-                    subbatch_in_index = self.in_index[:, i: i + self.p['COMPGCNARGS']['SUBBATCH']]
-                    subbatch_in_type = self.in_type[i: i + self.p['COMPGCNARGS']['SUBBATCH']]
-                    subbatch_in_norm = self.in_norm[i: i + self.p['COMPGCNARGS']['SUBBATCH']]
-                    subbatch_in_qual_ent = self.in_index_qual_ent[:, i: i + self.p['COMPGCNARGS']['SUBBATCH']]
-                    subbatch_in_qual_rel = self.in_index_qual_rel[:, i: i + self.p['COMPGCNARGS']['SUBBATCH']]
-                    subbatch_out_index = self.out_index[:, i: i + self.p['COMPGCNARGS']['SUBBATCH']]
-                    subbatch_out_type = self.out_type[i: i + self.p['COMPGCNARGS']['SUBBATCH']]
-                    subbatch_out_norm = self.out_norm[i: i + self.p['COMPGCNARGS']['SUBBATCH']]
-                    subbatch_out_qual_ent = self.out_index_qual_ent[:, i: i + self.p['COMPGCNARGS']['SUBBATCH']]
-                    subbatch_out_qual_rel = self.out_index_qual_rel[:, i: i + self.p['COMPGCNARGS']['SUBBATCH']]
+                    loop_res = self.propagate('add', self.loop_index, x=x, edge_type=self.loop_type,
+                                              rel_embed=rel_embed, edge_norm=None, mode='loop',
+                                              ent_embed=None, qualifier_ent=None, qualifier_rel=None, qual_index=None)
 
-                    in_res += self.propagate('add', subbatch_in_index, x=x, edge_type=subbatch_in_type,
-                                             rel_embed=rel_embed, edge_norm=subbatch_in_norm, mode='in',
-                                             ent_embed=x, qualifier_ent=subbatch_in_qual_ent, qualifier_rel=subbatch_in_qual_rel)
-                    out_res += self.propagate('add', subbatch_out_index, x=x, edge_type=subbatch_out_type,
-                                              rel_embed=rel_embed, edge_norm=subbatch_out_norm, mode='out',
-                                              ent_embed=x, qualifier_ent=subbatch_out_qual_ent, qualifier_rel=subbatch_out_qual_rel)
-                in_res = torch.div(in_res, float(num_batches))
-                out_res = torch.div(out_res, float(num_batches))
+                    out_res = self.propagate('add', self.out_index, x=x, edge_type=self.out_type,
+                                             rel_embed=rel_embed, edge_norm=self.out_norm, mode='out',
+                                             ent_embed=x, qualifier_ent=self.out_index_qual_ent,
+                                             qualifier_rel=self.out_index_qual_rel, qual_index=None)
+                else:
+                    loop_res = self.propagate('add', self.loop_index, x=x, edge_type=self.loop_type,
+                                              rel_embed=rel_embed, edge_norm=None, mode='loop',
+                                              ent_embed=None, qualifier_ent=None, qualifier_rel=None, qual_index=None)
+                    in_res = torch.zeros((x.shape[0], self.out_channels)).to(self.device)
+                    out_res = torch.zeros((x.shape[0], self.out_channels)).to(self.device)
+                    num_batches = (num_edges // self.p['COMPGCNARGS']['SUBBATCH']) + 1
+                    for i in range(num_edges)[::self.p['COMPGCNARGS']['SUBBATCH']]:
+                        subbatch_in_index = self.in_index[:, i: i + self.p['COMPGCNARGS']['SUBBATCH']]
+                        subbatch_in_type = self.in_type[i: i + self.p['COMPGCNARGS']['SUBBATCH']]
+                        subbatch_in_norm = self.in_norm[i: i + self.p['COMPGCNARGS']['SUBBATCH']]
+                        subbatch_in_qual_ent = self.in_index_qual_ent[:, i: i + self.p['COMPGCNARGS']['SUBBATCH']]
+                        subbatch_in_qual_rel = self.in_index_qual_rel[:, i: i + self.p['COMPGCNARGS']['SUBBATCH']]
+                        subbatch_out_index = self.out_index[:, i: i + self.p['COMPGCNARGS']['SUBBATCH']]
+                        subbatch_out_type = self.out_type[i: i + self.p['COMPGCNARGS']['SUBBATCH']]
+                        subbatch_out_norm = self.out_norm[i: i + self.p['COMPGCNARGS']['SUBBATCH']]
+                        subbatch_out_qual_ent = self.out_index_qual_ent[:, i: i + self.p['COMPGCNARGS']['SUBBATCH']]
+                        subbatch_out_qual_rel = self.out_index_qual_rel[:, i: i + self.p['COMPGCNARGS']['SUBBATCH']]
+
+                        in_res += self.propagate('add', subbatch_in_index, x=x, edge_type=subbatch_in_type,
+                                                 rel_embed=rel_embed, edge_norm=subbatch_in_norm, mode='in',
+                                                 ent_embed=x, qualifier_ent=subbatch_in_qual_ent,
+                                                 qualifier_rel=subbatch_in_qual_rel,
+                                                 qual_index=None)
+                        out_res += self.propagate('add', subbatch_out_index, x=x, edge_type=subbatch_out_type,
+                                                  rel_embed=rel_embed, edge_norm=subbatch_out_norm, mode='out',
+                                                  ent_embed=x, qualifier_ent=subbatch_out_qual_ent,
+                                                  qualifier_rel=subbatch_out_qual_rel,
+                                                  qual_index=None)
+                    in_res = torch.div(in_res, float(num_batches))
+                    out_res = torch.div(out_res, float(num_batches))
+
+            # or the mode is sparse and we're doing a lot of new stuff
+            elif self.p['COMPGCNARGS']['QUAL_REPR'] == "sparse":
+                if self.p['COMPGCNARGS']['SUBBATCH'] == 0:
+                    in_res = self.propagate('add', self.in_index, x=x, edge_type=self.in_type,
+                                            rel_embed=rel_embed, edge_norm=self.in_norm, mode='in',
+                                            ent_embed=x, qualifier_ent=self.in_index_qual_ent,
+                                            qualifier_rel=self.in_index_qual_rel,
+                                            qual_index=self.quals_index_in)
+
+                    loop_res = self.propagate('add', self.loop_index, x=x, edge_type=self.loop_type,
+                                              rel_embed=rel_embed, edge_norm=None, mode='loop',
+                                              ent_embed=None, qualifier_ent=None, qualifier_rel=None,
+                                              qual_index=None)
+
+                    out_res = self.propagate('add', self.out_index, x=x, edge_type=self.out_type,
+                                             rel_embed=rel_embed, edge_norm=self.out_norm, mode='out',
+                                             ent_embed=x, qualifier_ent=self.out_index_qual_ent,
+                                             qualifier_rel=self.out_index_qual_rel,
+                                             qual_index=self.quals_index_out)
+                else:
+                    """
+                    TODO: Slice the new quals matrix by batches but keep an eye on qual_index 
+                        -> all from the main batch have to be there
+                    """
+                    print("Subbatching in the sparse mode is still in TODO")
+                    raise NotImplementedError
 
         else:
             if self.p['COMPGCNARGS']['SUBBATCH'] == 0:
@@ -1133,7 +1193,7 @@ class CompQGCNConvLayer(MessagePassing):
 
         return trans_embed
 
-    def qualifier_aggregate(self, qualifier_emb, rel_part_emb, alpha=0.5):
+    def qualifier_aggregate(self, qualifier_emb, rel_part_emb, alpha=0.5, qual_index=None):
         """
             Aggregates the qualifier matrix (3, edge_index, emb_dim)
         :param qualifier_emb:
@@ -1147,10 +1207,18 @@ class CompQGCNConvLayer(MessagePassing):
         # qualifier_emb = torch.mm(qualifier_emb.sum(axis=0), self.w_q)
 
         if self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'sum':
-            qualifier_emb = torch.mm(qualifier_emb.sum(axis=0), self.w_q)  # [N_EDGES / 2 x EMB_DIM]
+            if self.p['COMPGCNARGS']['QUAL_REPR'] == "full":
+                qualifier_emb = torch.mm(qualifier_emb.sum(axis=0), self.w_q)  # [N_EDGES / 2 x EMB_DIM]
+            elif self.p['COMPGCNARGS']['QUAL_REPR'] == "sparse":
+                qualifier_emb = torch.mm(self.coalesce_quals(qualifier_emb, qual_index, rel_part_emb.shape[0]), self.w_q)
+
             return alpha * rel_part_emb + (1 - alpha) * qualifier_emb      # [N_EDGES / 2 x EMB_DIM]
         elif self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'concat':
-            qualifier_emb = qualifier_emb.sum(axis=0)                  # [N_EDGES / 2 x EMB_DIM]
+            if self.p['COMPGCNARGS']['QUAL_REPR'] == "full":
+                qualifier_emb = qualifier_emb.sum(axis=0)                  # [N_EDGES / 2 x EMB_DIM]
+            elif self.p['COMPGCNARGS']['QUAL_REPR'] == "sparse":
+                qualifier_emb = self.coalesce_quals(qualifier_emb, qual_index)
+
             agg_rel = torch.cat((rel_part_emb, qualifier_emb), dim=1)  # [N_EDGES / 2 x 2 * EMB_DIM]
             return torch.mm(agg_rel, self.w_q)                         # [N_EDGES / 2 x EMB_DIM]
 
@@ -1158,7 +1226,7 @@ class CompQGCNConvLayer(MessagePassing):
             raise NotImplementedError
 
     def update_rel_emb_with_qualifier(self, ent_embed, rel_embed,
-                                      qualifier_ent, qualifier_rel, edge_type):
+                                      qualifier_ent, qualifier_rel, edge_type, qual_index=None):
         """
         :param rel_embed:
         :param qualifier_ent:
@@ -1191,18 +1259,23 @@ class CompQGCNConvLayer(MessagePassing):
         # @TODO: pass it through a parameter layer
         # Pass it through a aggregate layer
 
-        return self.qualifier_aggregate(qualifier_emb, rel_part_emb, alpha=self.p['COMPGCNARGS']['TRIPLE_QUAL_WEIGHT'])
+        return self.qualifier_aggregate(qualifier_emb, rel_part_emb, alpha=self.p['COMPGCNARGS']['TRIPLE_QUAL_WEIGHT'],
+                                        qual_index=qual_index)
 
     # return qualifier_emb
     def message(self, x_j, edge_type, rel_embed, edge_norm, mode, ent_embed=None, qualifier_ent=None,
-                qualifier_rel=None):
+                qualifier_rel=None, qual_index=None):
         weight = getattr(self, 'w_{}'.format(mode))
 
         if self.p['STATEMENT_LEN'] != 3:
             # add code here
             if mode != 'loop':
-                rel_emb = self.update_rel_emb_with_qualifier(ent_embed, rel_embed, qualifier_ent,
+                if self.p['COMPGCNARGS']['QUAL_REPR'] == "full":
+                    rel_emb = self.update_rel_emb_with_qualifier(ent_embed, rel_embed, qualifier_ent,
                                                              qualifier_rel, edge_type)  #
+                elif self.p['COMPGCNARGS']['QUAL_REPR'] == "sparse":
+                    rel_emb = self.update_rel_emb_with_qualifier(ent_embed, rel_embed, qualifier_ent,
+                                                                 qualifier_rel, edge_type, qual_index)
             else:
                 rel_emb = torch.index_select(rel_embed, 0, edge_type)
         else:
@@ -1230,6 +1303,24 @@ class CompQGCNConvLayer(MessagePassing):
             col]  # Norm parameter D^{-0.5} *
 
         return norm
+
+    def coalesce_quals(self, qual_embeddings, qual_index, num_edges):
+        """
+        # TODO
+        :param qual_embeddings: shape of [1, N_QUALS]
+        :param qual_index: shape of [1, N_QUALS] which states which quals belong to which main relation from the index,
+            that is, all qual_embeddings that have the same index have to be summed up
+        :param num_edges: num_edges to return the appropriate tensor
+        :return: [1, N_EDGES]
+        """
+        output = torch.zeros((num_edges, qual_embeddings.shape[1]), dtype=torch.float, device=self.device)
+
+        # unq, unq_inv = torch.unique(qual_index, return_inverse=True)
+        # np.add.at(out[:2, :], unq_inv, quals[:2, :])
+        ind = torch.LongTensor(qual_index)
+        output.index_add_(dim=0, index=ind, source=qual_embeddings)  # TODO check this magic carefully
+
+        return output
 
     def __repr__(self):
         return '{}({}, {}, num_rels={})'.format(
