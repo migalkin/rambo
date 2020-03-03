@@ -1313,17 +1313,16 @@ class CompQGCNConvLayer(MessagePassing):
         :param num_edges: num_edges to return the appropriate tensor
         :return: [1, N_EDGES]
         """
-        # output = torch.zeros((num_edges, qual_embeddings.shape[1]), dtype=torch.float, device=self.device)
-        #
-        # # unq, unq_inv = torch.unique(qual_index, return_inverse=True)
-        # # np.add.at(out[:2, :], unq_inv, quals[:2, :])
-        # ind = torch.LongTensor(qual_index)
-        # output.index_add_(dim=0, index=ind, source=qual_embeddings)  # TODO check this magic carefully
+        output = torch.zeros((num_edges, qual_embeddings.shape[1]), dtype=torch.float).to(self.device)
+        # unq, unq_inv = torch.unique(qual_index, return_inverse=True)
+        # np.add.at(out[:2, :], unq_inv, quals[:2, :])
+        #ind = torch.LongTensor(qual_index)
+        output.index_add_(dim=0, index=qual_index, source=qual_embeddings)  # TODO check this magic carefully
 
-        output = np.zeros((num_edges, qual_embeddings.shape[1]))
-        ind = qual_index.detach().cpu().numpy()
-        np.add.at(output, ind, qual_embeddings.detach().cpu().numpy())
-        output = torch.tensor(output, dtype=torch.float).to(self.device)
+        # output = np.zeros((num_edges, qual_embeddings.shape[1]))
+        # ind = qual_index.detach().cpu().numpy()
+        # np.add.at(output, ind, qual_embeddings.detach().cpu().numpy())
+        # output = torch.tensor(output, dtype=torch.float).to(self.device)
         return output
 
     def __repr__(self):

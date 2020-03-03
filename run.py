@@ -33,6 +33,7 @@ from loops import training_loop, training_loop_neighborhood, training_loop_gcn
 # Clamp the randomness
 np.random.seed(42)
 random.seed(42)
+torch.manual_seed(42)
 
 """
     TODO: Add detailed explanations for these.
