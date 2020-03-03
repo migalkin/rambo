@@ -19,7 +19,8 @@ from mytorch.utils.goodies import *
 from parse_wd15k import Quint
 from load import DataManager
 from utils import *
-from evaluation import EvaluationBench, EvaluationBenchArity, EvaluationBenchGNNMultiClass, evaluate_pointwise
+from evaluation import EvaluationBench, EvaluationBenchArity, \
+    EvaluationBenchGNNMultiClass, evaluate_pointwise
 from evaluation import acc, mrr, mr, hits_at
 from models import TransE, ConvKB, KBGat, CompGCNConvE, CompGCNDistMult, CompGCNTransE
 from corruption import Corruption
@@ -125,20 +126,43 @@ if __name__ == "__main__":
 
     # Get parsed arguments
     config = DEFAULT_CONFIG.copy()
+    kbgatconfig = KBGATARGS.copy()
+    gcnconfig = COMPGCNARGS.copy()
     parsed_args = parse_args(sys.argv[1:])
     print(parsed_args)
 
     # Superimpose this on default config
     for k, v in parsed_args.items():
-        if k not in config.keys():
-            config[k.upper()] = v
-        else:
+        # If its a generic arg
+        if k in config.keys():
             default_val = config[k.upper()]
             if default_val is not None:
                 needed_type = type(default_val)
                 config[k.upper()] = needed_type(v)
             else:
                 config[k.upper()] = v
+        # If its a compgcnarg
+        elif k.lower().startswith('gcn_') and k[4:] in gcnconfig:
+            default_val = gcnconfig[k[4:].upper()]
+            if default_val is not None:
+                needed_type = type(default_val)
+                gcnconfig[k[4:].upper()] = needed_type(v)
+            else:
+                gcnconfig[k[4:].upper()] = v
+        # If its a kbgatarg
+        elif k.lower().startswith('kbgat_') and k[6:] in kbgatconfig:
+            default_val = kbgatconfig[k[6:].upper()]
+            if default_val is not None:
+                needed_type = type(default_val)
+                kbgatconfig[k[6:].upper()] = needed_type(v)
+            else:
+                kbgatconfig[k[6:].upper()] = v
+
+        else:
+            config[k.upper()] = v
+
+    config['KBGATARGS'] = kbgatconfig
+    config['COMPGCNARGS'] = gcnconfig
 
     """
         Custom Sanity Checks
