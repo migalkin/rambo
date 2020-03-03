@@ -1321,8 +1321,8 @@ class CompQGCNConvLayer(MessagePassing):
         # output.index_add_(dim=0, index=ind, source=qual_embeddings)  # TODO check this magic carefully
 
         output = np.zeros((num_edges, qual_embeddings.shape[1]))
-        ind = qual_index.detach().numpy()
-        np.add.at(output, ind, qual_embeddings.detach().numpy())
+        ind = qual_index.detach().cpu().numpy()
+        np.add.at(output, ind, qual_embeddings.detach().cpu().numpy())
         output = torch.tensor(output, dtype=torch.float).to(self.device)
         return output
 
