@@ -1217,7 +1217,7 @@ class CompQGCNConvLayer(MessagePassing):
             if self.p['COMPGCNARGS']['QUAL_REPR'] == "full":
                 qualifier_emb = qualifier_emb.sum(axis=0)                  # [N_EDGES / 2 x EMB_DIM]
             elif self.p['COMPGCNARGS']['QUAL_REPR'] == "sparse":
-                qualifier_emb = self.coalesce_quals(qualifier_emb, qual_index)
+                qualifier_emb = self.coalesce_quals(qualifier_emb, qual_index, rel_part_emb.shape[0])
 
             agg_rel = torch.cat((rel_part_emb, qualifier_emb), dim=1)  # [N_EDGES / 2 x 2 * EMB_DIM]
             return torch.mm(agg_rel, self.w_q)                         # [N_EDGES / 2 x EMB_DIM]
@@ -1313,13 +1313,17 @@ class CompQGCNConvLayer(MessagePassing):
         :param num_edges: num_edges to return the appropriate tensor
         :return: [1, N_EDGES]
         """
-        output = torch.zeros((num_edges, qual_embeddings.shape[1]), dtype=torch.float, device=self.device)
+        # output = torch.zeros((num_edges, qual_embeddings.shape[1]), dtype=torch.float, device=self.device)
+        #
+        # # unq, unq_inv = torch.unique(qual_index, return_inverse=True)
+        # # np.add.at(out[:2, :], unq_inv, quals[:2, :])
+        # ind = torch.LongTensor(qual_index)
+        # output.index_add_(dim=0, index=ind, source=qual_embeddings)  # TODO check this magic carefully
 
-        # unq, unq_inv = torch.unique(qual_index, return_inverse=True)
-        # np.add.at(out[:2, :], unq_inv, quals[:2, :])
-        ind = torch.LongTensor(qual_index)
-        output.index_add_(dim=0, index=ind, source=qual_embeddings)  # TODO check this magic carefully
-
+        output = np.zeros((num_edges, qual_embeddings.shape[1]))
+        ind = qual_index.detach().numpy()
+        np.add.at(output, ind, qual_embeddings.detach().numpy())
+        output = torch.tensor(output, dtype=torch.float).to(self.device)
         return output
 
     def __repr__(self):
