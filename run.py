@@ -280,6 +280,11 @@ if __name__ == "__main__":
     else:
         raise BadParameters(f"Unknown Model Name {config['MODEL_NAME']}")
 
+    # adding multi-gpu training support
+    if config['DEVICE'] == "cuda" and torch.cuda.device_count() > 1:
+        print("Using ", torch.cuda.device_count(), "GPUs!")
+        model = nn.DataParallel(model)
+
     model.to(config['DEVICE'])
 
     if config['OPTIMIZER'] == 'sgd':
