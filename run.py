@@ -34,7 +34,7 @@ from loops import training_loop, training_loop_neighborhood, training_loop_gcn
 # Clamp the randomness
 np.random.seed(42)
 random.seed(42)
-torch.manual_seed(42)
+#torch.manual_seed(42)
 
 """
     TODO: Add detailed explanations for these.
@@ -281,7 +281,7 @@ if __name__ == "__main__":
         raise BadParameters(f"Unknown Model Name {config['MODEL_NAME']}")
 
     # adding multi-gpu training support
-    if config['DEVICE'] == "cuda" and torch.cuda.device_count() > 1:
+    if torch.cuda.device_count() > 1:
         print("Using ", torch.cuda.device_count(), "GPUs!")
         model = nn.DataParallel(model)
 
