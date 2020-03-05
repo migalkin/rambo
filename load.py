@@ -4,85 +4,116 @@
 import json
 from tqdm import tqdm
 from functools import partial
+from typing import List, Union, Dict, Callable
+import numpy as np
+import pickle
+from utils import PARSED_DATA_DIR, KNOWN_DATASETS
+from pathlib import Path
+from mytorch.utils.goodies import FancyDict
 
-from utils import *
+# from utils import *
 
 KNOWN_DATASETS = ['fb15k237', 'wd15k', 'fb15k', 'wikipeople', 'wd15k_qonly']
 RAW_DATA_DIR = Path('./data/raw_data')
 PARSED_DATA_DIR = Path('./data/parsed_data')
 PRETRAINING_DATA_DIR = Path('./data/pre_training_data')
 
-def _conv_to_our_format_(data):
+def _conv_to_our_format_(data, filter_literals=True):
     conv_data = []
+    dropped_statements = 0
+    dropped_quals = 0
     for datum in tqdm(data):
-        conv_datum = []
+        try:
+            conv_datum = []
 
-        # Get head and tail rels
-        head, tail, rel_h, rel_t = None, None, None, None
-        for rel, val in datum.items():
-            if rel[-2:] == '_h' and type(val) is str:
-                head = val
-                rel_h = rel[:-2]
-            if rel[-2:] == '_t' and type(val) is str:
-                tail = val
-                rel_t = rel[:-2]
+            # Get head and tail rels
+            head, tail, rel_h, rel_t = None, None, None, None
+            for rel, val in datum.items():
+                if rel[-2:] == '_h' and type(val) is str:
+                    head = val
+                    rel_h = rel[:-2]
+                if rel[-2:] == '_t' and type(val) is str:
+                    tail = val
+                    rel_t = rel[:-2]
+                    if filter_literals and "http://" in tail:
+                        dropped_statements += 1
+                        raise Exception
 
-        assert head and tail and rel_h and rel_t, f"Weird data point. Some essentials not found. Quitting\nD:{datum}"
-        assert rel_h == rel_t, f"Weird data point. Head and Tail rels are different. Quitting\nD: {datum}"
+            assert head and tail and rel_h and rel_t, f"Weird data point. Some essentials not found. Quitting\nD:{datum}"
+            assert rel_h == rel_t, f"Weird data point. Head and Tail rels are different. Quitting\nD: {datum}"
 
-        # Drop this bs
-        datum.pop(rel_h + '_h')
-        datum.pop(rel_t + '_t')
-        datum.pop('N')
-        conv_datum += [head, rel_h, tail]
+            # Drop this bs
+            datum.pop(rel_h + '_h')
+            datum.pop(rel_t + '_t')
+            datum.pop('N')
+            conv_datum += [head, rel_h, tail]
 
-        # Get all qualifiers
-        for k, v in datum.items():
-            for _v in v:
-                conv_datum += [k, _v]
-
-        conv_data.append(tuple(conv_datum))
-    return conv_data
-
-
-def _conv_to_our_quint_format_(data):
-    conv_data = []
-    for datum in tqdm(data):
-        conv_datum = []
-
-        # Get head and tail rels
-        head, tail, rel_h, rel_t = None, None, None, None
-        for rel, val in datum.items():
-            if rel[-2:] == '_h' and type(val) is str:
-                head = val
-                rel_h = rel[:-2]
-            if rel[-2:] == '_t' and type(val) is str:
-                tail = val
-                rel_t = rel[:-2]
-
-        assert head and tail and rel_h and rel_t, f"Weird data point. Some essentials not found. Quitting\nD:{datum}"
-        assert rel_h == rel_t, f"Weird data point. Head and Tail rels are different. Quitting\nD: {datum}"
-
-        # Drop this bs
-        datum.pop(rel_h + '_h')
-        datum.pop(rel_t + '_t')
-        datum.pop('N')
-        conv_datum += [head, rel_h, tail, None, None]
-
-        if len(datum.items()) == 0:
-            conv_data.append(tuple(conv_datum))
-        else:
             # Get all qualifiers
             for k, v in datum.items():
-                conv_datum[3] = k
                 for _v in v:
-                    conv_datum[4] = _v
-                    conv_data.append(tuple(conv_datum))
+                    if filter_literals and "http://" in _v:
+                        dropped_quals += 1
+                        continue
+                    conv_datum += [k, _v]
 
+            conv_data.append(tuple(conv_datum))
+        except Exception:
+            continue
+    print(f"\n Dropped {dropped_statements} statements and {dropped_quals} quals with literals \n ")
     return conv_data
 
 
-def _get_uniques_(train_data: List[tuple], valid_data: List[tuple], test_data: List[tuple]) -> (list, list):
+def _conv_to_our_quint_format_(data, filter_literals=True):
+    conv_data = []
+    dropped_statements = 0
+    dropped_quals = 0
+    for datum in tqdm(data):
+        try:
+            conv_datum = []
+
+            # Get head and tail rels
+            head, tail, rel_h, rel_t = None, None, None, None
+            for rel, val in datum.items():
+                if rel[-2:] == '_h' and type(val) is str:
+                    head = val
+                    rel_h = rel[:-2]
+                if rel[-2:] == '_t' and type(val) is str:
+                    tail = val
+                    rel_t = rel[:-2]
+                    if filter_literals and "http://" in tail:
+                        dropped_statements += 1
+                        raise Exception
+
+            assert head and tail and rel_h and rel_t, f"Weird data point. Some essentials not found. Quitting\nD:{datum}"
+            assert rel_h == rel_t, f"Weird data point. Head and Tail rels are different. Quitting\nD: {datum}"
+
+            # Drop this bs
+            datum.pop(rel_h + '_h')
+            datum.pop(rel_t + '_t')
+            datum.pop('N')
+            conv_datum += [head, rel_h, tail, None, None]
+
+            if len(datum.items()) == 0:
+                conv_data.append(tuple(conv_datum))
+            else:
+                # Get all qualifiers
+                for k, v in datum.items():
+                    conv_datum[3] = k
+                    for _v in v:
+                        if filter_literals and "http://" in _v:
+                            dropped_quals += 1
+                            continue
+                        conv_datum[4] = _v
+                        conv_data.append(tuple(conv_datum))
+
+        except Exception:
+            continue
+    print(f"\n Dropped {dropped_statements} statements and {dropped_quals} quals with literals \n ")
+    return conv_data
+
+
+def _get_uniques_(train_data: List[tuple], valid_data: List[tuple], test_data: List[tuple]) -> (
+list, list):
     """ Throw in parsed_data/wd15k/ files and we'll count the entities and predicates"""
 
     statement_entities, statement_predicates = [], []
@@ -99,10 +130,25 @@ def _get_uniques_(train_data: List[tuple], valid_data: List[tuple], test_data: L
 
 def _pad_statements_(data: List[list], maxlen: int) -> List[list]:
     """ Padding index is always 0 as in the embedding layers of models. Cool? Cool. """
-    result = [statement + [0] * (maxlen - len(statement)) if len(statement) < maxlen else statement[:maxlen] for
-              statement in data]
+    result = [
+        statement + [0] * (maxlen - len(statement)) if len(statement) < maxlen else statement[
+                                                                                    :maxlen] for
+        statement in data]
     return result
 
+def clean_literals(data: List[list]) -> List[list]:
+    """
+
+    :param data: triples [s, p, o] with possible literals
+    :return: triples [s,p,o] without literals
+
+    """
+    result = []
+    for triple in data:
+        if "http://" not in triple[2]:
+            result.append(triple)
+
+    return result
 
 def load_wd15k_quints() -> Dict:
     """
@@ -156,8 +202,8 @@ def load_wd15k_quints() -> Dict:
              prtoid[q[3]] if q[3] is not None else prtoid['__na__'],
              entoid[q[4]] if q[4] is not None else entoid['__na__']] for q in test_quints]
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(q_entities),
-            "num_relations": len(q_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(q_entities),
+            "n_relations": len(q_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_triples() -> Dict:
@@ -193,8 +239,8 @@ def load_wd15k_triples() -> Dict:
     valid = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in valid_triples]
     test = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in test_triples]
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(triples_entities),
-            "num_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(triples_entities),
+            "n_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_statements(maxlen: int) -> Dict:
@@ -239,11 +285,13 @@ def load_wd15k_statements(maxlen: int) -> Dict:
             id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
         test.append(id_st)
 
-    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid, maxlen), _pad_statements_(test,
-                                                                                                            maxlen)
+    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid,
+                                                                           maxlen), _pad_statements_(
+        test,
+        maxlen)
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(st_entities),
-            "num_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(st_entities),
+            "n_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_33_quints() -> Dict:
@@ -298,8 +346,8 @@ def load_wd15k_33_quints() -> Dict:
              prtoid[q[3]] if q[3] is not None else prtoid['__na__'],
              entoid[q[4]] if q[4] is not None else entoid['__na__']] for q in test_quints]
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(q_entities),
-            "num_relations": len(q_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(q_entities),
+            "n_relations": len(q_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_33_triples() -> Dict:
@@ -335,8 +383,8 @@ def load_wd15k_33_triples() -> Dict:
     valid = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in valid_triples]
     test = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in test_triples]
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(triples_entities),
-            "num_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(triples_entities),
+            "n_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_33_statements(maxlen: int) -> Dict:
@@ -381,11 +429,13 @@ def load_wd15k_33_statements(maxlen: int) -> Dict:
             id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
         test.append(id_st)
 
-    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid, maxlen), _pad_statements_(test,
-                                                                                                            maxlen)
+    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid,
+                                                                           maxlen), _pad_statements_(
+        test,
+        maxlen)
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(st_entities),
-            "num_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(st_entities),
+            "n_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_66_quints() -> Dict:
@@ -440,8 +490,8 @@ def load_wd15k_66_quints() -> Dict:
              prtoid[q[3]] if q[3] is not None else prtoid['__na__'],
              entoid[q[4]] if q[4] is not None else entoid['__na__']] for q in test_quints]
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(q_entities),
-            "num_relations": len(q_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(q_entities),
+            "n_relations": len(q_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_66_triples() -> Dict:
@@ -477,8 +527,8 @@ def load_wd15k_66_triples() -> Dict:
     valid = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in valid_triples]
     test = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in test_triples]
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(triples_entities),
-            "num_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(triples_entities),
+            "n_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_66_statements(maxlen: int) -> Dict:
@@ -523,11 +573,13 @@ def load_wd15k_66_statements(maxlen: int) -> Dict:
             id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
         test.append(id_st)
 
-    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid, maxlen), _pad_statements_(test,
-                                                                                                            maxlen)
+    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid,
+                                                                           maxlen), _pad_statements_(
+        test,
+        maxlen)
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(st_entities),
-            "num_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(st_entities),
+            "n_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_qonly_statements(maxlen: int) -> Dict:
@@ -567,11 +619,13 @@ def load_wd15k_qonly_statements(maxlen: int) -> Dict:
             id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
         test.append(id_st)
 
-    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid, maxlen), _pad_statements_(test,
-                                                                                                            maxlen)
+    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid,
+                                                                           maxlen), _pad_statements_(
+        test,
+        maxlen)
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(st_entities),
-            "num_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(st_entities),
+            "n_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_qonly_quints() -> Dict:
@@ -618,8 +672,8 @@ def load_wd15k_qonly_quints() -> Dict:
              prtoid[q[3]],
              entoid[q[4]]] for q in test_quints]
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(quints_entities),
-            "num_relations": len(quints_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(quints_entities),
+            "n_relations": len(quints_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_qonly_triples() -> Dict:
@@ -650,8 +704,8 @@ def load_wd15k_qonly_triples() -> Dict:
     valid = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in valid_triples]
     test = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in test_triples]
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(triples_entities),
-            "num_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(triples_entities),
+            "n_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_qonly_33_statements(maxlen: int) -> Dict:
@@ -691,11 +745,13 @@ def load_wd15k_qonly_33_statements(maxlen: int) -> Dict:
             id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
         test.append(id_st)
 
-    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid, maxlen), _pad_statements_(test,
-                                                                                                            maxlen)
+    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid,
+                                                                           maxlen), _pad_statements_(
+        test,
+        maxlen)
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(st_entities),
-            "num_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(st_entities),
+            "n_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_qonly_33_quints() -> Dict:
@@ -742,8 +798,8 @@ def load_wd15k_qonly_33_quints() -> Dict:
              prtoid[q[3]] if q[3] is not None else prtoid['__na__'],
              entoid[q[4]] if q[4] is not None else entoid['__na__']] for q in test_quints]
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(quints_entities),
-            "num_relations": len(quints_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(quints_entities),
+            "n_relations": len(quints_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_qonly_33_triples() -> Dict:
@@ -774,8 +830,8 @@ def load_wd15k_qonly_33_triples() -> Dict:
     valid = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in valid_triples]
     test = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in test_triples]
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(triples_entities),
-            "num_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(triples_entities),
+            "n_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_qonly_66_statements(maxlen: int) -> Dict:
@@ -815,11 +871,13 @@ def load_wd15k_qonly_66_statements(maxlen: int) -> Dict:
             id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
         test.append(id_st)
 
-    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid, maxlen), _pad_statements_(test,
-                                                                                                            maxlen)
+    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid,
+                                                                           maxlen), _pad_statements_(
+        test,
+        maxlen)
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(st_entities),
-            "num_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(st_entities),
+            "n_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_qonly_66_quints() -> Dict:
@@ -866,8 +924,8 @@ def load_wd15k_qonly_66_quints() -> Dict:
              prtoid[q[3]] if q[3] is not None else prtoid['__na__'],
              entoid[q[4]] if q[4] is not None else entoid['__na__']] for q in test_quints]
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(quints_entities),
-            "num_relations": len(quints_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(quints_entities),
+            "n_relations": len(quints_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_wd15k_qonly_66_triples() -> Dict:
@@ -898,12 +956,11 @@ def load_wd15k_qonly_66_triples() -> Dict:
     valid = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in valid_triples]
     test = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in test_triples]
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(triples_entities),
-            "num_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(triples_entities),
+            "n_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
-
-def load_wikipeople_quints():
+def load_wikipeople_quints(filter_literals=True):
     # Load data from disk
     DIRNAME = Path('./data/raw_data/wikipeople')
 
@@ -925,9 +982,9 @@ def load_wikipeople_quints():
 
     # raw_trn[:-10], raw_tst[:10], raw_val[:10]
     # Conv data to our format
-    conv_trn, conv_tst, conv_val = _conv_to_our_quint_format_(raw_trn), \
-                                   _conv_to_our_quint_format_(raw_tst), \
-                                   _conv_to_our_quint_format_(raw_val)
+    conv_trn, conv_tst, conv_val = _conv_to_our_quint_format_(raw_trn, filter_literals=filter_literals), \
+                                   _conv_to_our_quint_format_(raw_tst, filter_literals=filter_literals), \
+                                   _conv_to_our_quint_format_(raw_val, filter_literals=filter_literals)
 
     # quints_entities, quints_predicates = _get_uniques_(train_data=conv_trn,
     #                                                          test_data=conv_tst,
@@ -973,11 +1030,11 @@ def load_wikipeople_quints():
              prtoid[q[3]] if q[3] is not None else prtoid['__na__'],
              entoid[q[4]] if q[4] is not None else entoid['__na__']] for q in conv_tst]
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(q_entities),
-            "num_relations": len(q_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(q_entities),
+            "n_relations": len(q_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
-def load_wikipeople_triples():
+def load_wikipeople_triples(filter_literals=True):
     # Load data from disk
     WP_DIR = PARSED_DATA_DIR / 'wikipeople'
 
@@ -989,6 +1046,12 @@ def load_wikipeople_triples():
         test_triples = pickle.load(f)
 
     triples_entities, triples_predicates = [], []
+
+    if filter_literals:
+        train_triples = clean_literals(train_triples)
+        valid_triples = clean_literals(valid_triples)
+        test_triples = clean_literals(test_triples)
+
 
     for triple in train_triples + valid_triples + test_triples:
         triples_entities += [triple[0], triple[2]]
@@ -1005,11 +1068,12 @@ def load_wikipeople_triples():
     valid = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in valid_triples]
     test = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in test_triples]
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(triples_entities),
-            "num_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
+
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(triples_entities),
+            "n_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
-def load_wikipeople_statements(maxlen=17) -> Dict:
+def load_wikipeople_statements(maxlen=17, filter_literals=True) -> Dict:
     """
         :return: train/valid/test splits for the wikipeople dataset in its quints form
     """
@@ -1033,16 +1097,14 @@ def load_wikipeople_statements(maxlen=17) -> Dict:
 
     # raw_trn[:-10], raw_tst[:10], raw_val[:10]
     # Conv data to our format
-    conv_trn, conv_tst, conv_val = _conv_to_our_format_(raw_trn), \
-                                   _conv_to_our_format_(raw_tst), \
-                                   _conv_to_our_format_(raw_val)
+    conv_trn, conv_tst, conv_val = _conv_to_our_format_(raw_trn, filter_literals=filter_literals), \
+                                   _conv_to_our_format_(raw_tst, filter_literals=filter_literals), \
+                                   _conv_to_our_format_(raw_val, filter_literals=filter_literals)
 
     # Get uniques
     statement_entities, statement_predicates = _get_uniques_(train_data=conv_trn,
                                                              test_data=conv_tst,
                                                              valid_data=conv_val)
-
-
 
     st_entities = ['__na__'] + statement_entities
     st_predicates = ['__na__'] + statement_predicates
@@ -1067,16 +1129,19 @@ def load_wikipeople_statements(maxlen=17) -> Dict:
             id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
         test.append(id_st)
 
-    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid, maxlen), _pad_statements_(test,
-                                                                                                            maxlen)
+    train, valid, test = _pad_statements_(train, maxlen), _pad_statements_(valid,
+                                                                           maxlen), _pad_statements_(
+        test,
+        maxlen)
 
-    return {"train": train, "valid": valid, "test": test, "num_entities": len(st_entities),
-            "num_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(st_entities),
+            "n_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
 def load_fb15k237() -> Dict:
     """
         TODO: Shift all entities w 1. ZERO MUST BE PAD
+        TODO: Return ID dicts?
     :return:
     """
     RAW_DATA_DIR = Path('./data/raw_data/fb15k237')
@@ -1090,32 +1155,34 @@ def load_fb15k237() -> Dict:
             open(RAW_DATA_DIR / "train2id.txt", "r") as train_file, \
             open(RAW_DATA_DIR / "valid2id.txt", "r") as valid_file, \
             open(RAW_DATA_DIR / "test2id.txt", "r") as test_file:
-        num_entities = int(next(ent_file).strip("\n")) + 1          # One more for padding/unk
-        num_relations = int(next(rel_file).strip("\n")) + 1         # One more for padding/unk
-        num_trains = int(next(train_file).strip("\n"))
+        num_entities = int(next(ent_file).strip("\n")) + 1  # One more for padding/unk
+        num_relations = int(next(rel_file).strip("\n")) + 1  # One more for padding/unk
+        num_triples = int(next(train_file).strip("\n"))
+
         for line in train_file:
             triple = line.strip("\n").split(" ")
-            training_triples.append([int(triple[0])+1, int(triple[2])+1, int(triple[1])+1])
+            training_triples.append([int(triple[0]) + 1, int(triple[2]) + 1, int(triple[1]) + 1])
 
         num_valid = int(next(valid_file).strip("\n"))
         for line in valid_file:
             triple = line.strip("\n").split(" ")
-            valid_triples.append([int(triple[0])+1, int(triple[2])+1, int(triple[1])+1])
+            valid_triples.append([int(triple[0]) + 1, int(triple[2]) + 1, int(triple[1]) + 1])
 
         num_test = int(next(test_file).strip("\n"))
         for line in test_file:
             triple = line.strip("\n").split(" ")
-            test_triples.append([int(triple[0])+1, int(triple[2])+1, int(triple[1])+1])
+            test_triples.append([int(triple[0]) + 1, int(triple[2]) + 1, int(triple[1]) + 1])
 
-    return {"train": training_triples, "valid": valid_triples, "test": test_triples, "num_entities": num_entities,
-            "num_relations": num_relations}
+    return {"train": training_triples, "valid": valid_triples, "test": test_triples,
+            "n_entities": num_entities, "n_relations": num_relations, "e2id": None, "r2id": None}
 
 
 def load_fb15k() -> Dict:
     """
             TODO: Shift all entities w 1. ZERO MUST BE PAD
+            TODO: Return ID dicts?
         :return:
-        """
+    """
     RAW_DATA_DIR = Path('./data/raw_data/fb15k')
 
     training_triples = []
@@ -1132,20 +1199,20 @@ def load_fb15k() -> Dict:
         num_trains = int(next(train_file).strip("\n")) + 1
         for line in train_file:
             triple = line.strip("\n").split(" ")
-            training_triples.append([int(triple[0])+1, int(triple[2])+1, int(triple[1])+1])
+            training_triples.append([int(triple[0]) + 1, int(triple[2]) + 1, int(triple[1]) + 1])
 
         num_valid = int(next(valid_file).strip("\n"))
         for line in valid_file:
             triple = line.strip("\n").split(" ")
-            valid_triples.append([int(triple[0])+1, int(triple[2])+1, int(triple[1])+1])
+            valid_triples.append([int(triple[0]) + 1, int(triple[2]) + 1, int(triple[1]) + 1])
 
         num_test = int(next(test_file).strip("\n"))
         for line in test_file:
             triple = line.strip("\n").split(" ")
-            test_triples.append([int(triple[0])+1, int(triple[2])+1, int(triple[1])+1])
+            test_triples.append([int(triple[0]) + 1, int(triple[2]) + 1, int(triple[1]) + 1])
 
-    return {"train": training_triples, "valid": valid_triples, "test": test_triples, "num_entities": num_entities,
-            "num_relations": num_relations}
+    return {"train": training_triples, "valid": valid_triples, "test": test_triples,
+            "n_entities": num_entities, "n_relations": num_relations}
 
 
 def load_dummy_dataset():
@@ -1228,7 +1295,8 @@ class DataManager(object):
     def gather_missing_entities(data: List[list], n_ents: int, positions: List[int]) -> np.array:
         """
 
-            Find the entities which aren't available from range(n_ents). Think inverse of gather_entities
+            Find the entities which aren't available from range(n_ents).
+            Think inverse of gather_entities
 
         :param data: A list of triples/quints whatever
         :param n_ents: Int signifying total number of entities
@@ -1244,6 +1312,193 @@ class DataManager(object):
         # Return this removed from range(n_ents)
         return np.arange(n_ents)[appeared == 0]
 
+    # @staticmethod
+    # def get_graph_repr(train: List[List[int]], valid: List[List[int]], test: List[List[int]],
+    #                ne: int, nr: int, config):
+    #
+    #     has_qualifiers: bool = True
+    #
+    #
+    #
+    #     train_edge_index, train_edge_type, train_qual_rel, train_qual_ent = _get_graph_repr_(train)
+    #     valid_edge_index, valid_edge_type, valid_qual_rel, valid_qual_ent = _get_graph_repr_(valid)
+    #     test_edge_index, test_edge_type, test_qual_rel, test_qual_ent = _get_graph_repr_(test)
+    #
+    #     return train_edge_index, train_edge_type, train_qual_rel, train_qual_ent, \
+    #            valid_edge_index, valid_edge_type, valid_qual_rel, valid_qual_ent, \
+    #            test_edge_index, test_edge_type, test_qual_rel, test_qual_ent
+
+    @staticmethod
+    def get_graph_repr(raw: Union[List[List[int]], np.ndarray], config: dict) \
+            -> Dict[str, np.ndarray]:
+        """
+            Decisions:
+                We are NOT making inverse of qualifier relations. Those are just repeated.
+                The normal triple relations are inverted.
+
+            Pseudocode:
+                for each of train, test, valid split
+                    for each triple,
+                        s, o -> edge_index
+                        r -> edge_type
+                        r_q1,... -> list of column vectors (np.arrs)
+                        e_q1,... -> list of column vectors (np.arrs)
+                    endfor
+                endfor
+
+                    create reverse relations in the existing stuff.
+
+            TODO: Check if the data has repeats (should not).
+
+            :param raw: [[s, p, o, qr1, qe1, qr2, qe3...], ..., [...]]
+                (already have a max qualifier length padded data)
+            :param config: the config dict
+        """
+        has_qualifiers: bool = config['STATEMENT_LEN'] != 3
+        try:
+            nr = config['NUM_RELATIONS']
+        except KeyError:
+            raise AssertionError("Function called too soon. Num relations not found.")
+
+        edge_index, edge_type = np.zeros((2, len(raw) * 2), dtype='int32'), np.zeros((len(raw) * 2), dtype='int32')
+        qual_rel = np.zeros(((len(raw[0]) - 3) // 2, len(raw) * 2), dtype='int32')
+        qual_ent = np.zeros(((len(raw[0]) - 3) // 2, len(raw) * 2), dtype='int32')
+
+        # Add actual data
+        for i, data in enumerate(raw):
+            edge_index[:, i] = [data[0], data[2]]
+            edge_type[i] = data[1]
+
+            # @TODO: add qualifiers
+            if has_qualifiers:
+                qual_rel[:, i] = data[3::2]
+                qual_ent[:, i] = data[4::2]
+
+        # Add inverses
+        edge_index[1, len(raw):] = edge_index[0, :len(raw)]
+        edge_index[0, len(raw):] = edge_index[1, :len(raw)]
+        edge_type[len(raw):] = edge_type[:len(raw)] + nr
+
+        if has_qualifiers:
+            qual_rel[:, len(raw):] = qual_rel[:, :len(raw)]
+            qual_ent[:, len(raw):] = qual_ent[:, :len(raw)]
+
+            return {'edge_index': edge_index,
+                    'edge_type': edge_type,
+                    'qual_rel': qual_rel,
+                    'qual_ent': qual_ent}
+        else:
+            return {'edge_index': edge_index,
+                    'edge_type': edge_type}
+
+    @staticmethod
+    def get_alternative_graph_repr(raw: Union[List[List[int]], np.ndarray], config: dict) \
+            -> Dict[str, np.ndarray]:
+        """
+        Decisions:
+
+            Quals are represented differently here, i.e., more as a coo matrix
+            s1 p1 o1 qr1 qe1 qr2 qe2    [edge index column 0]
+            s2 p2 o2 qr3 qe3            [edge index column 1]
+
+            edge index:
+            [ [s1, s2],
+              [o1, o2] ]
+
+            edge type:
+            [ p1, p2 ]
+
+            quals will looks like
+            [ [qr1, qr2, qr3],
+              [qe1, qr2, qe3],
+              [0  , 0  , 1  ]       <- obtained from the edge index columns
+
+        :param raw: [[s, p, o, qr1, qe1, qr2, qe3...], ..., [...]]
+            (already have a max qualifier length padded data)
+        :param config: the config dict
+        :return: output dict
+        """
+        has_qualifiers: bool = config['STATEMENT_LEN'] != 3
+        try:
+            nr = config['NUM_RELATIONS']
+        except KeyError:
+            raise AssertionError("Function called too soon. Num relations not found.")
+
+        edge_index, edge_type = np.zeros((2, len(raw) * 2), dtype='int32'), np.zeros((len(raw) * 2), dtype='int32')
+        # qual_rel = np.zeros(((len(raw[0]) - 3) // 2, len(raw) * 2), dtype='int32')
+        # qual_ent = np.zeros(((len(raw[0]) - 3) // 2, len(raw) * 2), dtype='int32')
+        qualifier_rel = []
+        qualifier_ent = []
+        qualifier_edge = []
+
+        # Add actual data
+        for i, data in enumerate(raw):
+            edge_index[:, i] = [data[0], data[2]]
+            edge_type[i] = data[1]
+
+            # @TODO: add qualifiers
+            if has_qualifiers:
+                qual_rel = np.array(data[3::2])
+                qual_ent = np.array(data[4::2])
+                non_zero_rels = qual_rel[np.nonzero(qual_rel)]
+                non_zero_ents = qual_ent[np.nonzero(qual_ent)]
+                for j in range(non_zero_ents.shape[0]):
+                    qualifier_rel.append(non_zero_rels[j])
+                    qualifier_ent.append(non_zero_ents[j])
+                    qualifier_edge.append(i)
+
+        quals = np.stack((qualifier_rel, qualifier_ent, qualifier_edge), axis=0)
+        num_triples = len(raw)
+
+        # Add inverses
+        edge_index[1, len(raw):] = edge_index[0, :len(raw)]
+        edge_index[0, len(raw):] = edge_index[1, :len(raw)]
+        edge_type[len(raw):] = edge_type[:len(raw)] + nr
+
+        if has_qualifiers:
+            full_quals = np.hstack((quals, quals))
+            full_quals[2, quals.shape[1]:] = quals[2, :quals.shape[1]]  # TODO: might need to + num_triples
+
+            return {'edge_index': edge_index,
+                    'edge_type': edge_type,
+                    'quals': full_quals}
+        else:
+            return {'edge_index': edge_index,
+                    'edge_type': edge_type}
+
+    @staticmethod
+    def add_reciprocals(data: Union[List[List[int]], np.ndarray], config: dict) -> Union[List[List[int]], np.ndarray]:
+        """
+
+        :param data: original direct data
+        :param config: config dict
+        :return: data enriched with reverse triples
+        """
+        reci = []
+        nr = config['NUM_RELATIONS']
+        has_qualifiers: bool = config['STATEMENT_LEN'] != 3
+
+        try:
+            nr = config['NUM_RELATIONS']
+        except KeyError:
+            raise AssertionError("Function called too soon. Num relations not found.")
+
+        for i, datum in enumerate(data):
+            s, o = datum[0], datum[2]
+            reci_r = datum[1] + nr
+
+            reci_triple = [o, reci_r, s]
+
+            if has_qualifiers:
+                quals = datum[3:]
+                reci_triple.extend(quals)
+
+            reci.append(reci_triple)
+
+        return reci
+
+
+
 
 if __name__ == "__main__":
     # ds = load_fb15k237()
@@ -1253,10 +1508,19 @@ if __name__ == "__main__":
     # ds4 = load_wd15k_qonly_triples()
     # print(len(ds4))
 
-    ds = load_wd15k_66_statements(maxlen=43)
-    tr = ds['train']
-    vl = ds['valid']
-    ts = ds['test']
-    ne = ds['num_entities']
-    nr = ds['num_relations']
-    print("Magic Mike!")
+    # ds = load_wd15k_66_statements(maxlen=43)
+    # tr = ds['train']
+    # vl = ds['valid']
+    # ts = ds['test']
+    # ne = ds['n_entities']
+    # nr = ds['n_relations']
+    # print("Magic Mike!")
+    ...
+
+    # ds = load_wikipeople_quints(filter_literals=True)
+    # tr = ds['train']
+    # vl = ds['valid']
+    # ts = ds['test']
+    # ne = ds['n_entities']
+    # nr = ds['n_relations']
+    # print("Magic Mike!")
