@@ -10,13 +10,13 @@ import pickle
 from utils import PARSED_DATA_DIR, KNOWN_DATASETS
 from pathlib import Path
 from mytorch.utils.goodies import FancyDict
+import random
+#from utils import *
 
-# from utils import *
-
-KNOWN_DATASETS = ['fb15k237', 'wd15k', 'fb15k', 'wikipeople', 'wd15k_qonly']
-RAW_DATA_DIR = Path('./data/raw_data')
-PARSED_DATA_DIR = Path('./data/parsed_data')
-PRETRAINING_DATA_DIR = Path('./data/pre_training_data')
+#KNOWN_DATASETS = ['fb15k237', 'wd15k', 'fb15k', 'wikipeople', 'wd15k_qonly']
+#RAW_DATA_DIR = Path('./data/raw_data')
+#PARSED_DATA_DIR = Path('./data/parsed_data')
+#PRETRAINING_DATA_DIR = Path('./data/pre_training_data')
 
 def _conv_to_our_format_(data, filter_literals=True):
     conv_data = []
@@ -110,6 +110,24 @@ def _conv_to_our_quint_format_(data, filter_literals=True):
             continue
     print(f"\n Dropped {dropped_statements} statements and {dropped_quals} quals with literals \n ")
     return conv_data
+
+
+def _conv_jf17k_to_quints(data):
+    result = []
+    for statement in data:
+        ents = statement[0::2]
+        rels = statement[1::2]
+
+        if len(rels) == 1:
+            result.append(statement)
+        else:
+            s, p, o = statement[0], statement[1], statement[2]
+            qual_rel = rels[1:]
+            qual_ent = ents[2:]
+            for i in range(len(qual_rel)):
+                result.append([s, p, o, qual_rel[i], qual_ent[i]])
+
+    return result
 
 
 def _get_uniques_(train_data: List[tuple], valid_data: List[tuple], test_data: List[tuple]) -> (
@@ -1215,6 +1233,164 @@ def load_fb15k() -> Dict:
             "n_entities": num_entities, "n_relations": num_relations}
 
 
+def load_jf17k_triples() -> Dict:
+    PARSED_DIR = Path('./data/parsed_data/jf17k')
+
+    training_statements = []
+    test_statements = []
+
+    with open(PARSED_DIR / 'train.txt', 'r') as train_file, \
+            open(PARSED_DIR / 'test.txt', 'r') as test_file:
+
+        for line in train_file:
+            training_statements.append(line.strip("\n").split(","))
+
+        for line in test_file:
+            test_statements.append(line.strip("\n").split(","))
+
+        entities, predicates = [], []
+        for s in training_statements + test_statements:
+            entities += [s[0], s[2]]
+            predicates.append(s[1])
+
+        triples_entities = ['__na__'] + sorted(list(set(entities)))
+        triples_predicates = ['__na__'] + sorted(list(set(predicates)))
+
+        # uritoid = {ent: i for i, ent in enumerate(['__na__', '__pad__'] + entities +  predicates)}
+        entoid = {pred: i for i, pred in enumerate(triples_entities)}
+        prtoid = {pred: i for i, pred in enumerate(triples_predicates)}
+
+        # sample valid as 20% of train
+        random.shuffle(training_statements)
+        tr_st = training_statements[:int(0.8 * len(training_statements))]
+        val_st = training_statements[int(0.8 * len(training_statements)):]
+
+        train = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in tr_st]
+        valid = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in val_st]
+        test = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in test_statements]
+
+        return {"train": train, "valid": valid, "test": test, "n_entities": len(triples_entities),
+                "n_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
+
+
+def load_jf17k_quints() -> Dict:
+    PARSED_DIR = Path('./data/parsed_data/jf17k')
+
+    training_statements = []
+    test_statements = []
+
+    with open(PARSED_DIR / 'train.txt', 'r') as train_file, \
+            open(PARSED_DIR / 'test.txt', 'r') as test_file:
+
+        for line in train_file:
+            training_statements.append(line.strip("\n").split(","))
+
+        for line in test_file:
+            test_statements.append(line.strip("\n").split(","))
+
+        # sample valid as 20% of train
+        random.shuffle(training_statements)
+        tr_st = training_statements[:int(0.8 * len(training_statements))]
+        val_st = training_statements[int(0.8 * len(training_statements)):]
+
+        train_quints = _conv_jf17k_to_quints(tr_st)
+        val_quints = _conv_jf17k_to_quints(val_st)
+        test_quints = _conv_jf17k_to_quints(test_statements)
+
+        quints_entities, quints_predicates = [], []
+        for quint in train_quints + val_quints + test_quints:
+            quints_entities += [quint[0], quint[2]]
+            quints_predicates.append(quint[1])
+            if len(quint) > 3:
+                quints_entities.append(quint[4])
+                quints_predicates.append(quint[3])
+
+        quints_entities = sorted(list(set(quints_entities)))
+        quints_predicates = sorted(list(set(quints_predicates)))
+
+        q_entities = ['__na__'] + quints_entities
+        q_predicates = ['__na__'] + quints_predicates
+
+        # uritoid = {ent: i for i, ent in enumerate(['__na__', '__pad__'] + entities +  predicates)}
+        entoid = {pred: i for i, pred in enumerate(q_entities)}
+        prtoid = {pred: i for i, pred in enumerate(q_predicates)}
+
+        train = [[entoid[q[0]],
+                  prtoid[q[1]],
+                  entoid[q[2]],
+                  prtoid[q[3]] if len(q)>3 else prtoid['__na__'],
+                  entoid[q[4]] if len(q)>3 else entoid['__na__']] for q in train_quints]
+        valid = [[entoid[q[0]],
+                  prtoid[q[1]],
+                  entoid[q[2]],
+                  prtoid[q[3]] if len(q)>3 else prtoid['__na__'],
+                  entoid[q[4]] if len(q)>3 else entoid['__na__']] for q in val_quints]
+        test = [[entoid[q[0]],
+                 prtoid[q[1]],
+                 entoid[q[2]],
+                 prtoid[q[3]] if len(q)>3 else prtoid['__na__'],
+                 entoid[q[4]] if len(q)>3 else entoid['__na__']] for q in test_quints]
+
+        return {"train": train, "valid": valid, "test": test, "n_entities": len(q_entities),
+                "n_relations": len(q_predicates), 'e2id': entoid, 'r2id': prtoid}
+
+
+def load_jf17k_statements(maxlen=15) -> Dict:
+    PARSED_DIR = Path('./data/parsed_data/jf17k')
+
+    training_statements = []
+    test_statements = []
+
+    with open(PARSED_DIR / 'train.txt', 'r') as train_file, \
+        open(PARSED_DIR / 'test.txt', 'r') as test_file:
+
+        for line in train_file:
+            training_statements.append(line.strip("\n").split(","))
+
+        for line in test_file:
+            test_statements.append(line.strip("\n").split(","))
+
+        st_entities, st_predicates = _get_uniques_(training_statements, test_statements, test_statements)
+        st_entities = ['__na__'] + st_entities
+        st_predicates = ['__na__'] + st_predicates
+
+        entoid = {pred: i for i, pred in enumerate(st_entities)}
+        prtoid = {pred: i for i, pred in enumerate(st_predicates)}
+
+        # sample valid as 20% of train
+        random.shuffle(training_statements)
+        tr_st = training_statements[:int(0.8*len(training_statements))]
+        val_st = training_statements[int(0.8*len(training_statements)):]
+
+        train, valid, test = [], [], []
+        for st in tr_st:
+            id_st = []
+            for i, uri in enumerate(st):
+                id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
+            train.append(id_st)
+
+        for st in val_st:
+            id_st = []
+            for i, uri in enumerate(st):
+                id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
+            valid.append(id_st)
+
+        for st in test_statements:
+            id_st = []
+            for i, uri in enumerate(st):
+                id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
+            test.append(id_st)
+
+        train, valid, test = _pad_statements_(train, maxlen), \
+                             _pad_statements_(valid, maxlen), \
+                             _pad_statements_(test,maxlen)
+
+        return {"train": train, "valid": valid, "test": test, "n_entities": len(st_entities),
+                "n_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
+
+
+
+
 def load_dummy_dataset():
     """
 
@@ -1290,6 +1466,13 @@ class DataManager(object):
             return load_fb15k
         elif config['DATASET'] == 'fb15k237':
             return load_fb15k237
+        elif config['DATASET'] == 'jf17k':
+            if config['STATEMENT_LEN'] == 5:
+                return load_jf17k_quints
+            elif config['STATEMENT_LEN'] == 3:
+                return load_jf17k_triples
+            elif config['STATEMENT_LEN'] == -1:
+                return partial(load_jf17k_statements, maxlen=config['MAX_QPAIRS'])
 
     @staticmethod
     def gather_missing_entities(data: List[list], n_ents: int, positions: List[int]) -> np.array:
@@ -1517,7 +1700,7 @@ if __name__ == "__main__":
     # print("Magic Mike!")
     ...
 
-    # ds = load_wikipeople_quints(filter_literals=True)
+    # ds = load_jf17k_quints()
     # tr = ds['train']
     # vl = ds['valid']
     # ts = ds['test']

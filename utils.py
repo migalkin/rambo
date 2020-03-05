@@ -14,7 +14,7 @@ import load as l
 Quint = namedtuple('Quint', 's p o qp qe')
 
 KNOWN_DATASETS = ['fb15k237', 'wd15k', 'fb15k', 'wikipeople', 'wd15k_qonly', 'wd15k_qonly_33', 'wd15k_qonly_66',
-                  'wd15k_33', 'wd15k_66']
+                  'wd15k_33', 'wd15k_66', 'jf17k']
 RAW_DATA_DIR = Path('./data/raw_data')
 PARSED_DATA_DIR = Path('./data/parsed_data')
 PRETRAINING_DATA_DIR = Path('./data/pre_training_data')
