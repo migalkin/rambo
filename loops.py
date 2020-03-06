@@ -567,12 +567,19 @@ def training_loop_gcn(epochs: int,
 
                 triples, labels = batch
                 sub, rel = triples[:, 0], triples[:, 1]
+                if data_fn.with_q:
+                    quals = triples[2:]
+                    _quals = torch.tensor(quals, dtype=torch.long, device=device)
                 #sub, rel, obj, label = batch[:, 0], batch[:, 1], batch[:, 2], torch.ones((batch.shape[0], 1), dtype=torch.float)
                 _sub = torch.tensor(sub, dtype=torch.long, device=device)
                 _rel = torch.tensor(rel, dtype=torch.long, device=device)
                 _labels = torch.tensor(labels, dtype=torch.float, device=device)
 
-                pred = train_fn(_sub, _rel)
+                if data_fn.with_q:
+                    pred = train_fn(_sub, _rel, _quals)
+                else:
+                    pred = train_fn(_sub, _rel)
+
                 loss = train_fn.loss(pred, _labels)
 
                 per_epoch_loss.append(loss.item())
