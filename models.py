@@ -815,7 +815,18 @@ class CompQGCNEncoder(CompGCNBase):
 
         self.register_parameter('bias', Parameter(torch.zeros(self.num_ent)))
 
-    def forward_base(self, sub, rel, drop1, drop2):
+    def forward_base(self, sub, rel, drop1, drop2,
+                     quals=None, embed_qualifiers: bool = False):
+        """
+        TODO: priyansh was here
+        :param sub:
+        :param rel:
+        :param drop1:
+        :param drop2:
+        :param quals: (optional) (bs, maxqpairs*2) Each row is [qp, qe, qp, qe, ...]
+        :param embed_qualifiers: if True, we also indexselect qualifier information
+        :return:
+        """
 
         r = self.init_rel if not self.model_nm.endswith('transe') \
             else torch.cat([self.init_rel, -self.init_rel], dim=0)
@@ -856,15 +867,50 @@ class CompQGCNEncoder(CompGCNBase):
 
             x = drop1(x)
             x, r = self.conv2(x=x, edge_index=self.edge_index,
-                              edge_type=self.edge_type, rel_embed=r) if self.n_layer == 2 else (x, r)
+                              edge_type=self.edge_type, rel_embed=r) \
+                if self.n_layer == 2 else \
+                (x, r)
 
         x = drop2(x) if self.n_layer == 2 else x
 
         sub_emb = torch.index_select(x, 0, sub)
         rel_emb = torch.index_select(r, 0, rel)
 
+        if embed_qualifiers:
+            assert quals is not None, "Expected a tensor as quals."
+            qual_obj_emb = torch.index_select(x, 0, quals[:, 1::2])
+            qual_rel_emb = torch.index_select(x, 0, quals[:, 0::2])
+            return sub_emb, rel_emb, qual_obj_emb, qual_rel_emb, x
+
         return sub_emb, rel_emb, x
 
+
+class CompGCNTransEStatements(CompQGCNEncoder):
+    """ Merging from class TransE code """
+
+    model_name = 'CompGCN TransE Statements MM'
+
+    def __init__(self, kg_graph_repr: Dict[str, np.ndarray], config: dict, pretrained=None):
+
+        # @TODO: What to do of pretrained embeddings
+        if pretrained:
+            raise NotImplementedError
+
+        super(self.__class__, self).__init__(kg_graph_repr, config)
+        self.drop = torch.nn.Dropout(self.hid_drop)
+        self.gamma = config['COMPGCNARGS']['GAMMA']
+
+    def forward(self, sub, rel, quals):
+        """ quals is (bs, 2*maxQpairs) """
+        sub_emb, rel_emb, qual_obj_emb, qual_rel_emb, all_ent = \
+            self.forward_base(sub, rel, self.drop, self.drop, quals, True)
+
+        obj_emb = sub_emb + rel_emb + torch.sum(qual_rel_emb - qual_obj_emb, dim=1)
+
+        x = self.gamma - torch.norm(obj_emb.unsqueeze(1) - all_ent, p=1, dim=2)
+        score = torch.sigmoid(x)
+
+        return score
 
 class CompGCNTransE(CompQGCNEncoder):
     def __init__(self, kg_graph_repr: Dict[str, np.ndarray], config: dict, pretrained=None):
@@ -879,6 +925,7 @@ class CompGCNTransE(CompQGCNEncoder):
 
     def forward(self, sub, rel):
         sub_emb, rel_emb, all_ent = self.forward_base(sub, rel, self.drop, self.drop)
+
         obj_emb = sub_emb + rel_emb
 
         x = self.gamma - torch.norm(obj_emb.unsqueeze(1) - all_ent, p=1, dim=2)
@@ -1004,7 +1051,8 @@ class CompQGCNConvLayer(MessagePassing):
         if self.p['COMPGCNARGS']['BIAS']: self.register_parameter('bias', Parameter(
             torch.zeros(out_channels)))
 
-    def forward(self, x, edge_index, edge_type, rel_embed, qualifier_ent=None, qualifier_rel=None, quals=None):
+    def forward(self, x, edge_index, edge_type, rel_embed,
+                qualifier_ent=None, qualifier_rel=None, quals=None):
         if self.device is None:
             self.device = edge_index.device
 
