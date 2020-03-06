@@ -101,7 +101,7 @@ class MultiClassSampler:
 
 
         for i, s in enumerate(statements):
-            s, r, quals = s[0], s[1], s[3:] if self.data.shape[1] > 3 else None
+            s, r, quals = s[0], s[1], s[2:] if self.data.shape[1] > 3 else None
             lbls = self.index[(s, r, *quals)] if self.with_q else self.index[(s,r)]
             y[i, lbls] = 1.0
 
