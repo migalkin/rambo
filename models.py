@@ -878,8 +878,14 @@ class CompQGCNEncoder(CompGCNBase):
 
         if embed_qualifiers:
             assert quals is not None, "Expected a tensor as quals."
-            qual_obj_emb = torch.index_select(x, 0, quals[:, 1::2])
-            qual_rel_emb = torch.index_select(x, 0, quals[:, 0::2])
+            # flatten quals
+            quals_ents = quals[:, 1::2].view(1,-1).squeeze(0)
+            quals_rels = quals[:, 0::2].view(1,-1).squeeze(0)
+            qual_obj_emb = torch.index_select(x, 0, quals_ents)
+            # qual_obj_emb = torch.index_select(x, 0, quals[:, 1::2])
+            qual_rel_emb = torch.index_select(r, 0, quals_rels)
+            qual_obj_emb = qual_obj_emb.view(sub_emb.shape[0], -1 ,sub_emb.shape[1])
+            qual_rel_emb = qual_rel_emb.view(rel_emb.shape[0], -1, rel_emb.shape[1])
             return sub_emb, rel_emb, qual_obj_emb, qual_rel_emb, x
 
         return sub_emb, rel_emb, x

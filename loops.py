@@ -507,7 +507,8 @@ def training_loop_gcn(epochs: int,
                       log_wandb: bool = True,
                       run_trn_testbench: bool = True,
                       savedir: str = None,
-                      save_content: Dict[str, list] = None) -> (list, list, list):
+                      save_content: Dict[str, list] = None,
+                      qualifier_aware: bool = False) -> (list, list, list):
     """
             A fn which can be used to train a language model.
 
@@ -567,15 +568,15 @@ def training_loop_gcn(epochs: int,
 
                 triples, labels = batch
                 sub, rel = triples[:, 0], triples[:, 1]
-                if data_fn.with_q:
-                    quals = triples[2:]
+                if qualifier_aware:
+                    quals = triples[:, 2:]
                     _quals = torch.tensor(quals, dtype=torch.long, device=device)
                 #sub, rel, obj, label = batch[:, 0], batch[:, 1], batch[:, 2], torch.ones((batch.shape[0], 1), dtype=torch.float)
                 _sub = torch.tensor(sub, dtype=torch.long, device=device)
                 _rel = torch.tensor(rel, dtype=torch.long, device=device)
                 _labels = torch.tensor(labels, dtype=torch.float, device=device)
 
-                if data_fn.with_q:
+                if qualifier_aware:
                     pred = train_fn(_sub, _rel, _quals)
                 else:
                     pred = train_fn(_sub, _rel)

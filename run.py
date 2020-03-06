@@ -22,7 +22,7 @@ from utils import *
 from evaluation import EvaluationBench, EvaluationBenchArity, \
     EvaluationBenchGNNMultiClass, evaluate_pointwise
 from evaluation import acc, mrr, mr, hits_at
-from models import TransE, ConvKB, KBGat, CompGCNConvE, CompGCNDistMult, CompGCNTransE
+from models import TransE, ConvKB, KBGat, CompGCNConvE, CompGCNDistMult, CompGCNTransE, CompGCNTransEStatements
 from corruption import Corruption
 from sampler import SimpleSampler, NeighbourhoodSampler, MultiClassSampler
 from loops import training_loop, training_loop_neighborhood, training_loop_gcn
@@ -270,7 +270,10 @@ if __name__ == "__main__":
     elif config['MODEL_NAME'].lower().startswith('compgcn'):
         # TODO when USE_TEST is true training data should include the validation set as well
         if config['MODEL_NAME'].lower().endswith('transe'):
-            model = CompGCNTransE(train_data_gcn, config)
+            if config['SAMPLER_W_QUALIFIERS']:
+                model = CompGCNTransEStatements(train_data_gcn, config)
+            else:
+                model = CompGCNTransE(train_data_gcn, config)
         elif config['MODEL_NAME'].lower().endswith('conve'):
             model = CompGCNConvE(train_data_gcn, config)
         elif config['MODEL_NAME'].lower().endswith('distmult'):
@@ -371,7 +374,8 @@ if __name__ == "__main__":
         "log_wandb": config['WANDB'],
         "run_trn_testbench": config['RUN_TESTBENCH_ON_TRAIN'],
         "savedir": savedir,
-        "save_content": save_content
+        "save_content": save_content,
+        "qualifier_aware": config['SAMPLER_W_QUALIFIERS']
     }
 
     if config['MODEL_NAME'] == 'kbgat':
