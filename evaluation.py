@@ -333,16 +333,16 @@ class EvaluationBenchGNNMultiClass:
                         # evaluate "direct"
                         for i in range(self.left_eval.shape[0])[::self.bs]:
                             eval_batch_direct = self.left_eval[i: i + self.bs]
+                            subs = torch.tensor(eval_batch_direct[:, 0], device=self.config['DEVICE'])
+                            rels = torch.tensor(eval_batch_direct[:, 1], device=self.config['DEVICE'])
+                            objs = torch.tensor(eval_batch_direct[:, 2], device=self.config['DEVICE'])
+                            labels = torch.tensor(self.get_label(eval_batch_direct), device=self.config['DEVICE'])
                             if not self.config['SAMPLER_W_QUALIFIERS']:
-                                subs = torch.tensor(eval_batch_direct[:, 0], device=self.config['DEVICE'])
-                                rels = torch.tensor(eval_batch_direct[:, 1], device=self.config['DEVICE'])
-                                objs = torch.tensor(eval_batch_direct[:, 2], device=self.config['DEVICE'])
                                 scores = self.model.forward(subs, rels)
-                                labels = torch.tensor(self.get_label(eval_batch_direct), device=self.config['DEVICE'])
-                                metr = self.compute(scores, objs, labels, metr)
-
                             else:
-                                raise NotImplementedError
+                                quals = torch.tensor(eval_batch_direct[:, 3:], device=self.config['DEVICE'])
+                                scores = self.model.forward(subs, rels, quals)
+                            metr = self.compute(scores, objs, labels, metr)
                         left_metrics = self._summarize_metrics_(metr, len(self.left_eval))
 
 
@@ -350,16 +350,17 @@ class EvaluationBenchGNNMultiClass:
                         # evaluate "reci"
                         for i in range(self.right_eval.shape[0])[::self.bs]:
                             eval_batch_reci = self.right_eval[i: i + self.bs]
+                            subs = torch.tensor(eval_batch_reci[:, 0], device=self.config['DEVICE'])
+                            rels = torch.tensor(eval_batch_reci[:, 1], device=self.config['DEVICE'])
+                            objs = torch.tensor(eval_batch_reci[:, 2], device=self.config['DEVICE'])
+                            labels = torch.tensor(self.get_label(eval_batch_reci), device=self.config['DEVICE'])
                             if not self.config['SAMPLER_W_QUALIFIERS']:
-                                subs = torch.tensor(eval_batch_reci[:, 0], device=self.config['DEVICE'])
-                                rels = torch.tensor(eval_batch_reci[:, 1], device=self.config['DEVICE'])
-                                objs = torch.tensor(eval_batch_reci[:, 2], device=self.config['DEVICE'])
                                 # eval_batch_reci = torch.cat((subs.unsqueeze(1), rels.unsqueeze(1), objs.unsqueeze(1)), dim=1)
                                 scores = self.model.forward(subs, rels)
-                                labels = torch.tensor(self.get_label(eval_batch_reci), device=self.config['DEVICE'])
-                                metr = self.compute(scores, objs, labels, metr)
                             else:
-                                raise NotImplementedError
+                                quals = torch.tensor(eval_batch_reci[:, 3:], device=self.config['DEVICE'])
+                                scores = self.model.forward(subs, rels, quals)
+                            metr = self.compute(scores, objs, labels, metr)
                         right_metrics = self._summarize_metrics_(metr, len(self.right_eval))
 
 
