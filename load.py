@@ -13,10 +13,10 @@ from mytorch.utils.goodies import FancyDict
 import random
 #from utils import *
 
-#KNOWN_DATASETS = ['fb15k237', 'wd15k', 'fb15k', 'wikipeople', 'wd15k_qonly']
-#RAW_DATA_DIR = Path('./data/raw_data')
-#PARSED_DATA_DIR = Path('./data/parsed_data')
-#PRETRAINING_DATA_DIR = Path('./data/pre_training_data')
+# KNOWN_DATASETS = ['fb15k237', 'wd15k', 'fb15k', 'wikipeople', 'wd15k_qonly']
+# RAW_DATA_DIR = Path('./data/raw_data')
+# PARSED_DATA_DIR = Path('./data/parsed_data')
+# PRETRAINING_DATA_DIR = Path('./data/pre_training_data')
 
 def _conv_to_our_format_(data, filter_literals=True):
     conv_data = []
@@ -167,6 +167,19 @@ def clean_literals(data: List[list]) -> List[list]:
             result.append(triple)
 
     return result
+
+def remove_dups(data: List[list]) -> List[list]:
+    """
+
+    :param data: list of lists with possible duplicates
+    :return: a list without duplicates
+    """
+    new_l = []
+    for datum in data:
+        if datum not in new_l:
+            new_l.append(datum)
+
+    return new_l
 
 def load_wd15k_quints() -> Dict:
     """
@@ -1269,7 +1282,10 @@ def load_jf17k_triples() -> Dict:
         valid = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in val_st]
         test = [[entoid[q[0]], prtoid[q[1]], entoid[q[2]]] for q in test_statements]
 
-        return {"train": train, "valid": valid, "test": test, "n_entities": len(triples_entities),
+        # optional
+        clean_train, clean_valid, clean_test = remove_dups(train), remove_dups(valid), remove_dups(test)
+
+        return {"train": clean_train, "valid": clean_valid, "test": clean_test, "n_entities": len(triples_entities),
                 "n_relations": len(triples_predicates), 'e2id': entoid, 'r2id': prtoid}
 
 
@@ -1700,10 +1716,19 @@ if __name__ == "__main__":
     # print("Magic Mike!")
     ...
 
-    # ds = load_jf17k_quints()
+    # ds = load_jf17k_triples()
     # tr = ds['train']
     # vl = ds['valid']
     # ts = ds['test']
     # ne = ds['n_entities']
     # nr = ds['n_relations']
     # print("Magic Mike!")
+    # id2e = {v:k for k,v in ds['e2id'].items()}
+    # id2p = {v:k for k,v in ds['r2id'].items()}
+    # count = 0
+    # print(f"train: {len(tr)}, val: {len(vl)}, ts: {len(ts)}")
+    # for i in tr:
+    #     if i in vl:
+    #         count +=1
+    #         # print(id2e[i[0]], id2p[i[1]], id2e[i[2]])
+    # print("Leak: ", count)

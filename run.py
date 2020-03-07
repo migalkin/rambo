@@ -11,6 +11,7 @@ from functools import partial
 import random
 import wandb
 import sys
+import collections
 
 # MyTorch imports
 from mytorch.utils.goodies import *
@@ -84,7 +85,8 @@ DEFAULT_CONFIG = {
     'WANDB': False,
     'LABEL_SMOOTHING': 0.0,
     'SAMPLER_W_QUALIFIERS': False,
-    'OPTIMIZER': 'adam'
+    'OPTIMIZER': 'adam',
+    'REMOVE_TRIPLE_DUPLICATES': True,
 }
 
 KBGATARGS = {
@@ -203,6 +205,24 @@ if __name__ == "__main__":
     # Break down the data
     try:
         train_data, valid_data, test_data, n_entities, n_relations, _, _ = data.values()
+        if config['REMOVE_TRIPLE_DUPLICATES'] and config['STATEMENT_LEN'] == 3:
+            train_data = [x for x in train_data if x not in valid_data]
+            if config['USE_TEST']:
+                train_data = [x for x in train_data if x not in test_data]
+                valid_data = [x for x in valid_data if x not in test_data]
+        elif config['REMOVE_TRIPLE_DUPLICATES'] and config['STATEMENT_LEN'] == -1:
+            if config['SAMPLER_W_QUALIFIERS']:
+                # we expect all data points are unique at this stage
+                pass
+            else:
+                # when we're in the no_quals decoder mode -> prune the train set out of [s,p,o] points from the test set
+                val_spos = [[x[0], x[1], x[2]] for x in valid_data]
+                train_data = [x for x in train_data if [x[0], x[1], x[2]] not in val_spos]
+                if config['USE_TEST']:
+                    test_spos = [[x[0], x[1], x[2]] for x in test_data]
+                    train_data = [x for x in train_data if [x[0], x[1], x[2]] not in test_spos]
+                    valid_data = [x for x in valid_data if [x[0], x[1], x[2]] not in test_spos]
+
     except ValueError:
         raise ValueError(f"Honey I broke the loader for {config['DATASET']}")
 
@@ -228,13 +248,19 @@ if __name__ == "__main__":
     if config['MODEL_NAME'].lower().startswith('compgcn'):
         # Replace the data with their graph repr formats
         if config['COMPGCNARGS']['QUAL_REPR'] == 'full':
-            train_data_gcn = DataManager.get_graph_repr(train_data, config)
-            valid_data_gcn = DataManager.get_graph_repr(valid_data, config)
-            test_data_gcn = DataManager.get_graph_repr(test_data, config)
+            if config['USE_TEST']:
+                train_data_gcn = DataManager.get_graph_repr(train_data + valid_data, config)
+            else:
+                train_data_gcn = DataManager.get_graph_repr(train_data, config)
+            # valid_data_gcn = DataManager.get_graph_repr(valid_data, config)
+            # test_data_gcn = DataManager.get_graph_repr(test_data, config)
         elif config['COMPGCNARGS']['QUAL_REPR'] == 'sparse':
-            train_data_gcn = DataManager.get_alternative_graph_repr(train_data, config)
-            valid_data_gcn = DataManager.get_alternative_graph_repr(valid_data, config)
-            test_data_gcn = DataManager.get_alternative_graph_repr(test_data, config)
+            if config['USE_TEST']:
+                train_data_gcn = DataManager.get_alternative_graph_repr(train_data + valid_data, config)
+            else:
+                train_data_gcn = DataManager.get_alternative_graph_repr(train_data, config)
+            # valid_data_gcn = DataManager.get_alternative_graph_repr(valid_data, config)
+            # test_data_gcn = DataManager.get_alternative_graph_repr(test_data, config)
         else:
             print("Supported QUAL_REPR are `full` or `sparse`")
             raise NotImplementedError
@@ -268,7 +294,6 @@ if __name__ == "__main__":
             pretrained_models = None
         model = KBGat(config, pretrained_models)
     elif config['MODEL_NAME'].lower().startswith('compgcn'):
-        # TODO when USE_TEST is true training data should include the validation set as well
         if config['MODEL_NAME'].lower().endswith('transe'):
             if config['SAMPLER_W_QUALIFIERS']:
                 model = CompGCNTransEStatements(train_data_gcn, config)

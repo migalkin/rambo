@@ -76,6 +76,9 @@ class MultiClassSampler:
             s, r, quals = statement[0], statement[1], statement[3:] if self.data.shape[1] > 3 else None
             self.index[(s, r, *quals)].append(statement[2]) if self.with_q else self.index[(s, r)].append(statement[2])
 
+        # remove duplicates in the objects list for convenience
+        for k, v in self.index.items():
+            self.index[k] = list(set(v))
 
     def reset(self, *ignore_args):
         """
