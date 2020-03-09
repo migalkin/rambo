@@ -175,7 +175,7 @@ def remove_dups(data: List[list]) -> List[list]:
     :return: a list without duplicates
     """
     new_l = []
-    for datum in data:
+    for datum in tqdm(data):
         if datum not in new_l:
             new_l.append(datum)
 
@@ -1131,7 +1131,7 @@ def load_wikipeople_statements(maxlen=17, filter_literals=True) -> Dict:
     conv_trn, conv_tst, conv_val = _conv_to_our_format_(raw_trn, filter_literals=filter_literals), \
                                    _conv_to_our_format_(raw_tst, filter_literals=filter_literals), \
                                    _conv_to_our_format_(raw_val, filter_literals=filter_literals)
-
+    #conv_trn, conv_tst, conv_val = remove_dups(conv_trn), remove_dups(conv_tst), remove_dups(conv_val)
     # Get uniques
     statement_entities, statement_predicates = _get_uniques_(train_data=conv_trn,
                                                              test_data=conv_tst,
@@ -1697,6 +1697,86 @@ class DataManager(object):
         return reci
 
 
+def count_stats(ds):
+    import collections
+    tr = ds['train']
+    vl = ds['valid']
+    ts = ds['test']
+    ne = ds['n_entities']
+    nr = ds['n_relations']
+    print("Magic Mike!")
+    # id2e = {v:k for k,v in ds['e2id'].items()}
+    # id2p = {v:k for k,v in ds['r2id'].items()}
+    train_ents = set([item for x in tr for item in x[0::2]])
+    train_rels = set([item for x in tr for item in x[1::2]])
+    val_ents = set([item for x in vl for item in x[0::2]])
+    val_rels = set([item for x in vl for item in x[1::2]])
+    tv_ents = set([item for x in tr + vl for item in x[0::2]])
+    tv_rels = set([item for x in tr + vl for item in x[1::2]])
+    test_ents = set([item for x in ts for item in x[0::2]])
+    test_rels = set([item for x in ts for item in x[1::2]])
+
+    dups_train = {k:v for k,v in collections.Counter(tuple(x) for x in tr).items() if v > 1}
+    print("Duplicates in train: ", len(dups_train))
+    dups_val = {k: v for k, v in collections.Counter(tuple(x) for x in vl).items() if v > 1}
+    print("Duplicates in val: ", len(dups_val))
+    dups_test = {k: v for k, v in collections.Counter(tuple(x) for x in ts).items() if v > 1}
+    print("Duplicates in test: ", len(dups_test))
+    print("-" * 10)
+
+    ts_unique = val_ents.difference(train_ents)
+    ts_unique_rel = val_rels.difference(train_rels)
+    senseless_triples = []
+    for x in vl:
+        xe = set(x[0::2])
+        xr = set(x[1::2])
+        if len(xe.intersection(ts_unique)) > 0:
+            senseless_triples.append(x)
+            continue
+        elif len(xr.intersection(ts_unique_rel)) > 0:
+            senseless_triples.append(x)
+            continue
+
+    count = 0
+    val_spos = set([(i[0], i[1], i[2]) for i in vl])
+    for i in tr:
+        main_triple = (i[0], i[1], i[2])
+        if main_triple in val_spos:
+            count += 1
+
+    # senseless_triples = [x for x in vl if x[0] in ts_unique or x[2] in ts_unique]
+    print(len(ts_unique), "/", ne, " entities are in val but not in train")
+    print(len(ts_unique_rel), "/", nr, " rels are in val but not in train")
+    print(f"Those entities and relations are used in {len(senseless_triples)} val triples")
+    print("Leak triples in train wrt val: ", count, "/", len(tr))
+
+    print("-"*10)
+    ts_unique = test_ents.difference(tv_ents)
+    ts_unique_rel = test_rels.difference(tv_rels)
+    senseless_triples = []
+    for x in ts:
+        xe = set(x[0::2])
+        xr = set(x[1::2])
+        if len(xe.intersection(ts_unique)) > 0:
+            senseless_triples.append(x)
+            continue
+        elif len(xr.intersection(ts_unique_rel)) > 0:
+            senseless_triples.append(x)
+            continue
+
+    count = 0
+    test_spos = set([(i[0], i[1], i[2]) for i in ts])
+    for i in tr+vl:
+        main_triple = (i[0], i[1], i[2])
+        if main_triple in test_spos:
+            count += 1
+    # senseless_triples = [x for x in ts if x[0] in ts_unique or x[2] in ts_unique]
+    print(len(ts_unique), "/", ne, " entities are in test but not in train+valid")
+    print(len(ts_unique_rel), "/", nr, " rels are in test but not in train")
+    print(f"Those entities and relations are used in {len(senseless_triples)} test triples")
+    print("Leak triples in train+val wrt to test : ", count, "/", len(tr+vl))
+
+
 
 
 if __name__ == "__main__":
@@ -1707,16 +1787,14 @@ if __name__ == "__main__":
     # ds4 = load_wd15k_qonly_triples()
     # print(len(ds4))
 
-    # ds = load_wd15k_66_statements(maxlen=43)
-    # tr = ds['train']
-    # vl = ds['valid']
-    # ts = ds['test']
-    # ne = ds['n_entities']
-    # nr = ds['n_relations']
-    # print("Magic Mike!")
-    ...
+    # ds = load_clean_wikipeople_statements(maxlen=43)
+    # ds = load_fb15k237()
+    ds = load_jf17k_statements(maxlen=17)
+    count_stats(ds)
 
-    # ds = load_jf17k_triples()
+
+    # import collections
+    # ds = load_wikipeople_quints()
     # tr = ds['train']
     # vl = ds['valid']
     # ts = ds['test']
@@ -1727,8 +1805,19 @@ if __name__ == "__main__":
     # id2p = {v:k for k,v in ds['r2id'].items()}
     # count = 0
     # print(f"train: {len(tr)}, val: {len(vl)}, ts: {len(ts)}")
+    # dups = {k:v for k,v in collections.Counter(tuple(x) for x in tr).items() if v > 1}
+    # print(sum([v for k,v in dups.items()]))
+    # test_spos = set([(i[0], i[1], i[2]) for i in ts])
     # for i in tr:
-    #     if i in vl:
+    #     main_triple = (i[0], i[1], i[2])
+    #     if main_triple in test_spos:
     #         count +=1
     #         # print(id2e[i[0]], id2p[i[1]], id2e[i[2]])
-    # print("Leak: ", count)
+    # print("Leak: ", count, "/", len(tr))
+    # count = 0
+    # for i in vl:
+    #     main_triple = (i[0], i[1], i[2])
+    #     if main_triple in test_spos:
+    #         count +=1
+    #         # print(id2e[i[0]], id2p[i[1]], id2e[i[2]])
+    # print("Leak: ", count, " / ", len(vl))
