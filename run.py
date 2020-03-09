@@ -206,23 +206,23 @@ if __name__ == "__main__":
     # Break down the data
     try:
         train_data, valid_data, test_data, n_entities, n_relations, _, _ = data.values()
-        if config['REMOVE_TRIPLE_DUPLICATES'] and config['STATEMENT_LEN'] == 3:
-            train_data = [x for x in train_data if x not in valid_data]
-            if config['USE_TEST']:
-                train_data = [x for x in train_data if x not in test_data]
-                valid_data = [x for x in valid_data if x not in test_data]
-        elif config['REMOVE_TRIPLE_DUPLICATES'] and config['STATEMENT_LEN'] == -1:
-            if config['SAMPLER_W_QUALIFIERS']:
-                # we expect all data points are unique at this stage
-                pass
-            else:
-                # when we're in the no_quals decoder mode -> prune the train set out of [s,p,o] points from the test set
-                val_spos = [[x[0], x[1], x[2]] for x in valid_data]
-                train_data = [x for x in train_data if [x[0], x[1], x[2]] not in val_spos]
-                if config['USE_TEST']:
-                    test_spos = [[x[0], x[1], x[2]] for x in test_data]
-                    train_data = [x for x in train_data if [x[0], x[1], x[2]] not in test_spos]
-                    valid_data = [x for x in valid_data if [x[0], x[1], x[2]] not in test_spos]
+        # if config['REMOVE_TRIPLE_DUPLICATES'] and config['STATEMENT_LEN'] == 3:
+        #     train_data = [x for x in train_data if x not in valid_data]
+        #     if config['USE_TEST']:
+        #         train_data = [x for x in train_data if x not in test_data]
+        #         valid_data = [x for x in valid_data if x not in test_data]
+        # elif config['REMOVE_TRIPLE_DUPLICATES'] and config['STATEMENT_LEN'] == -1:
+        #     if config['SAMPLER_W_QUALIFIERS']:
+        #         # we expect all data points are unique at this stage
+        #         pass
+        #     else:
+        #         # when we're in the no_quals decoder mode -> prune the train set out of [s,p,o] points from the test set
+        #         val_spos = [[x[0], x[1], x[2]] for x in valid_data]
+        #         train_data = [x for x in train_data if [x[0], x[1], x[2]] not in val_spos]
+        #         if config['USE_TEST']:
+        #             test_spos = [[x[0], x[1], x[2]] for x in test_data]
+        #             train_data = [x for x in train_data if [x[0], x[1], x[2]] not in test_spos]
+        #             valid_data = [x for x in valid_data if [x[0], x[1], x[2]] not in test_spos]
 
     except ValueError:
         raise ValueError(f"Honey I broke the loader for {config['DATASET']}")
