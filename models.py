@@ -1175,19 +1175,23 @@ class CompQGCNConvLayer(MessagePassing):
             if self.p['COMPGCNARGS']['SUBBATCH'] == 0:
                 in_res = self.propagate('add', self.in_index, x=x, edge_type=self.in_type,
                                         rel_embed=rel_embed, edge_norm=self.in_norm, mode='in',
-                                        ent_embed=None, qualifier_ent=None, qualifier_rel=None)
+                                        ent_embed=None, qualifier_ent=None, qualifier_rel=None,
+                                        qual_index=None)
 
                 loop_res = self.propagate('add', self.loop_index, x=x, edge_type=self.loop_type,
                                           rel_embed=rel_embed, edge_norm=None, mode='loop',
-                                          ent_embed=None, qualifier_ent=None, qualifier_rel=None)
+                                          ent_embed=None, qualifier_ent=None, qualifier_rel=None,
+                                          qual_index=None)
 
                 out_res = self.propagate('add', self.out_index, x=x, edge_type=self.out_type,
                                          rel_embed=rel_embed, edge_norm=self.out_norm, mode='out',
-                                         ent_embed=None, qualifier_ent=None, qualifier_rel=None)
+                                         ent_embed=None, qualifier_ent=None, qualifier_rel=None,
+                                         qual_index=None)
             else:
                 loop_res = self.propagate('add', self.loop_index, x=x, edge_type=self.loop_type,
                                           rel_embed=rel_embed, edge_norm=None, mode='loop',
-                                          ent_embed=None, qualifier_ent=None, qualifier_rel=None)
+                                          ent_embed=None, qualifier_ent=None, qualifier_rel=None,
+                                          qual_index=None)
                 in_res = torch.zeros((x.shape[0], self.out_channels)).to(self.device)
                 out_res = torch.zeros((x.shape[0], self.out_channels)).to(self.device)
                 num_batches = (num_edges // self.p['COMPGCNARGS']['SUBBATCH']) + 1
@@ -1201,10 +1205,12 @@ class CompQGCNConvLayer(MessagePassing):
 
                     in_res += self.propagate('add', subbatch_in_index, x=x, edge_type=subbatch_in_type,
                                         rel_embed=rel_embed, edge_norm=subbatch_in_norm, mode='in',
-                                        ent_embed=None, qualifier_ent=None, qualifier_rel=None)
+                                        ent_embed=None, qualifier_ent=None, qualifier_rel=None,
+                                             qual_index=None)
                     out_res += self.propagate('add', subbatch_out_index, x=x, edge_type=subbatch_out_type,
                                          rel_embed=rel_embed, edge_norm=subbatch_out_norm, mode='out',
-                                         ent_embed=None, qualifier_ent=None, qualifier_rel=None)
+                                         ent_embed=None, qualifier_ent=None, qualifier_rel=None,
+                                              qual_index=None)
                 in_res = torch.div(in_res, float(num_batches))
                 out_res = torch.div(out_res, float(num_batches))
 
