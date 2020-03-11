@@ -1705,6 +1705,14 @@ def count_stats(ds):
     ne = ds['n_entities']
     nr = ds['n_relations']
     print("Magic Mike!")
+    print(f"The dataset: {len(tr)} training, {len(vl)} val, {len(ts)} test, {ne} entities, {nr} rels")
+    if len(tr[0]) > 3:
+        quals_train = len([x for x in tr if x[3] != 0])
+        quals_val = len([x for x in vl if x[3] != 0])
+        quals_test = len([x for x in ts if x[3] != 0])
+        print(f"W/ quals - train: {quals_train}/{round(float(quals_train/len(tr)), 3)}")
+        print(f"W/ quals - val: {quals_val}/{round(float(quals_val / len(vl)), 3)}")
+        print(f"W/ quals - test: {quals_test}/{round(float(quals_test / len(ts)), 3)}")
     # id2e = {v:k for k,v in ds['e2id'].items()}
     # id2p = {v:k for k,v in ds['r2id'].items()}
     train_ents = set([item for x in tr for item in x[0::2]])
@@ -1715,6 +1723,13 @@ def count_stats(ds):
     tv_rels = set([item for x in tr + vl for item in x[1::2]])
     test_ents = set([item for x in ts for item in x[0::2]])
     test_rels = set([item for x in ts for item in x[1::2]])
+    if len(tr[0]) > 3:
+        qe = set([item for x in tr+vl+ts for item in x[4::2]])
+        qr = set([item for x in tr+vl+ts for item in x[3::2]])
+        all_ents = set([item for x in tr+vl+ts for item in [x[0],x[2]]])
+        all_rels = set([x[1] for x in tr+vl+ts])
+        print(f"Unique qual entities: {len(qe.difference(all_ents))}")
+        print(f"Unique qual rels: {len(qr.difference(all_rels))}")
 
     dups_train = {k:v for k,v in collections.Counter(tuple(x) for x in tr).items() if v > 1}
     print("Duplicates in train: ", len(dups_train))
@@ -1789,7 +1804,7 @@ if __name__ == "__main__":
 
     # ds = load_clean_wikipeople_statements(maxlen=43)
     # ds = load_fb15k237()
-    ds = load_jf17k_statements(maxlen=17)
+    ds = load_wd15k_statements(maxlen=17)
     count_stats(ds)
 
 

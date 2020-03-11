@@ -1,6 +1,8 @@
 from pathlib import Path
+from tqdm import tqdm
 import collections
 import json
+import pickle
 from typing import Dict
 from load import _conv_to_our_format_, remove_dups, _get_uniques_
 
@@ -181,6 +183,136 @@ def clean_jf17k():
             test_clean.write(",".join(datum)+"\n")
 
 
+def load_pickle(path):
+    with open(path / 'train_quints.pkl', 'rb') as f:
+        train_quints = pickle.load(f)
+    with open(path / 'valid_quints.pkl', 'rb') as f:
+        valid_quints = pickle.load(f)
+    with open(path / 'test_quints.pkl', 'rb') as f:
+        test_quints = pickle.load(f)
+
+    with open(path / 'train_triples.pkl', 'rb') as f:
+        train_triples = pickle.load(f)
+    with open(path / 'valid_triples.pkl', 'rb') as f:
+        valid_triples = pickle.load(f)
+    with open(path / 'test_triples.pkl', 'rb') as f:
+        test_triples = pickle.load(f)
+
+    with open(path / 'train_statements.pkl', 'rb') as f:
+        train_statements = pickle.load(f)
+    with open(path / 'valid_statements.pkl', 'rb') as f:
+        valid_statements = pickle.load(f)
+    with open(path / 'test_statements.pkl', 'rb') as f:
+        test_statements = pickle.load(f)
+
+    return {"triples": (train_triples, valid_triples, test_triples),
+            "quints": (train_quints, valid_quints, test_quints),
+            "statements": (train_statements, valid_statements, test_statements)}
+
+
+def write_ds(ds, path, mode):
+    train, val, test = ds
+    with open(path / f"train.txt", "w") as f:
+        for item in train:
+            if mode == "quints":
+                item = [x for x in item if x is not None]
+            f.write(",".join(item) + "\n")
+    with open(path / f"valid.txt", "w") as f:
+        for item in val:
+            if mode == "quints":
+                item = [x for x in item if x is not None]
+            f.write(",".join(item) + "\n")
+    with open(path / f"test.txt", "w") as f:
+        for item in test:
+            if mode == "quints":
+                item = [x for x in item if x is not None]
+            f.write(",".join(item) + "\n")
+    print(f"Finished writing {mode} in {str(path)}")
+
+def clean_wd_dataset(dataset, mode):
+    train, val, test = dataset
+
+    # remove duplicates
+    train = list(collections.Counter(tuple(x) for x in train).keys())
+    val = list(collections.Counter(tuple(x) for x in val).keys())
+    test = list(collections.Counter(tuple(x) for x in test).keys())
+
+    # if len(train[0]) == 5:
+    #     # remove none
+    #     train = [item for x in train for item in x if item is not None]
+
+    count = 0
+    to_remove = []
+    if mode == "t":
+        test_spos = set([(i[0], i[1], i[2]) for i in test])
+        for i in tqdm(train + val):
+            if i in test_spos:
+                count += 1
+                to_remove.append(i)
+    else:
+        test_spos = set([(i[0], i[1], i[2]) for i in test])
+        for i in tqdm(train + val):
+            main_triple = (i[0], i[1], i[2])
+            if main_triple in test_spos:
+                count += 1
+                to_remove.append(i)
+
+    print(f"Removing {count} leaking statements from train and val")
+    train = [x for x in train if x not in to_remove]
+    val = [x for x in val if x not in to_remove]
+
+    # remove statements with non-existent subs/rels
+    train_ents = set([item for x in train for item in x[0::2]])
+    train_rels = set([item for x in train for item in x[1::2]])
+    val_ents = set([item for x in val for item in x[0::2]])
+    val_rels = set([item for x in val for item in x[1::2]])
+    tv_ents = set([item for x in train + val for item in x[0::2]])
+    tv_rels = set([item for x in train + val for item in x[1::2]])
+    test_ents = set([item for x in test for item in x[0::2]])
+    test_rels = set([item for x in test for item in x[1::2]])
+
+    # clean test first
+    ts_unique = test_ents.difference(tv_ents)
+    ts_unique_rel = test_rels.difference(tv_rels)
+    senseless_triples = []
+    for x in test:
+        xe = set(x[0::2])
+        xr = set(x[1::2])
+        if len(xe.intersection(ts_unique)) > 0:
+            senseless_triples.append(x)
+            continue
+        elif len(xr.intersection(ts_unique_rel)) > 0:
+            senseless_triples.append(x)
+            continue
+
+    # remove senseless triples from the test
+    print(f"Removing {len(senseless_triples)} statements from test")
+    test = [x for x in test if x not in senseless_triples]
+
+    return train, val, test
+
+
+def clean_wd_family(dstype):
+
+    DIRNAME = Path('./data/parsed_data/'+dstype)
+    OUTDIR = Path('./data/clean/'+dstype)
+    OUTDIR.mkdir(parents=True, exist_ok=True)
+    triple_dir, quints_dir, statement_dir = OUTDIR / "triples", OUTDIR / "quints", OUTDIR / "statements"
+    triple_dir.mkdir(parents=True, exist_ok=True)
+    quints_dir.mkdir(parents=True, exist_ok=True)
+    statement_dir.mkdir(parents=True, exist_ok=True)
+
+    dataset = load_pickle(DIRNAME)
+    triples, quints, statements = dataset['triples'], dataset['quints'], dataset['statements']
+
+    clean_triples = clean_wd_dataset(triples, "t")
+    clean_quints = clean_wd_dataset(quints, "q")
+    clean_statements = clean_wd_dataset(statements, "s")
+
+    write_ds(clean_triples, triple_dir, "triples")
+    write_ds(clean_quints, quints_dir, "quints")
+    write_ds(clean_statements, statement_dir, "statements")
+
 
 if __name__ == "__main__":
-    clean_jf17k()
+    clean_wd_family("wd15k_qonly_33")

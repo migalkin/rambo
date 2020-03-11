@@ -114,5 +114,70 @@ def load_clean_jf17k_statements(maxlen=15) -> Dict:
         return {"train": train, "valid": valid, "test": test, "n_entities": len(st_entities),
                 "n_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
 
+
+def load_clean_wd15k(name, subtype, maxlen=43) -> Dict:
+    """
+        :return: train/valid/test splits for the wd15k datasets
+    """
+    assert name in ['wd15k', 'wd15k_qonly', 'wd15k_33', 'wd15k_66', 'wd15k_qonly_33', 'wd15k_qonly_66'], \
+        "Incorrect dataset"
+    assert subtype in ["triples", "quints", "statements"], "Incorrect subtype: triples/quints/statements"
+
+    DIRNAME = Path(f'./data/clean/{name}/{subtype}')
+
+    # Load raw shit
+    with open(DIRNAME / 'train.txt', 'r') as f:
+        raw_trn = []
+        for line in f.readlines():
+            raw_trn.append(line.strip("\n").split(","))
+
+    with open(DIRNAME / 'test.txt', 'r') as f:
+        raw_tst = []
+        for line in f.readlines():
+            raw_tst.append(line.strip("\n").split(","))
+
+    with open(DIRNAME / 'valid.txt', 'r') as f:
+        raw_val = []
+        for line in f.readlines():
+            raw_val.append(line.strip("\n").split(","))
+
+    # Get uniques
+    statement_entities, statement_predicates = _get_uniques_(train_data=raw_trn,
+                                                             test_data=raw_tst,
+                                                             valid_data=raw_val)
+
+    st_entities = ['__na__'] + statement_entities
+    st_predicates = ['__na__'] + statement_predicates
+
+    entoid = {pred: i for i, pred in enumerate(st_entities)}
+    prtoid = {pred: i for i, pred in enumerate(st_predicates)}
+
+    train, valid, test = [], [], []
+    for st in raw_trn:
+        id_st = []
+        for i, uri in enumerate(st):
+            id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
+        train.append(id_st)
+    for st in raw_val:
+        id_st = []
+        for i, uri in enumerate(st):
+            id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
+        valid.append(id_st)
+    for st in raw_tst:
+        id_st = []
+        for i, uri in enumerate(st):
+            id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
+        test.append(id_st)
+
+    if subtype != "triples":
+        if subtype == "quints":
+            maxlen = 5
+        train, valid, test = _pad_statements_(train, maxlen), \
+                             _pad_statements_(valid, maxlen), \
+                             _pad_statements_(test, maxlen)
+
+    return {"train": train, "valid": valid, "test": test, "n_entities": len(st_entities),
+            "n_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
+
 if __name__ == "__main__":
-    count_stats(load_clean_jf17k_statements())
+    count_stats(load_clean_wd15k("wd15k", "statements", maxlen=43))
