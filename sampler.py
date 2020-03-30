@@ -125,22 +125,14 @@ class MultiClassSampler:
         """
             Each time, take `bs` pos
         """
-        # if self.i >= self.data.shape[0]:
-        #     print("Should stop")
-        #     raise StopIteration
-        #
-        # _statements = self.data[self.i: min(self.i + self.bs, len(self.data) - 1)]
-        # _labels = self.get_label(_statements)
-        # self.i = min(self.i + self.bs, self.data.shape[0])
-        # return _statements, _labels
-        if self.i >= len(self.index):
+        if self.i >= len(self.keys)-1:  # otherwise batch norm will fail
             print("Should stop")
             raise StopIteration
 
-        _statements = self.keys[self.i: min(self.i + self.bs, len(self.keys) - 1)]
+        _statements = self.keys[self.i: min(self.i + self.bs, len(self.keys))]  # removed len()-1 due to a corner case bug when self.i == len(self.keys)
         _main = np.array([list(x) for x in _statements])
         _labels = self.get_label(_main)
-        self.i = min(self.i + self.bs, len(self.index))
+        self.i = min(self.i + self.bs, len(self.keys))
         return _main, _labels
 
 # Make data iterator -> Modify Simple Iterator from mytorch
