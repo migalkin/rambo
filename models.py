@@ -940,6 +940,29 @@ class CompGCNTransE(CompQGCNEncoder):
         return score
 
 
+class CompGCNDistMultStatement(CompQGCNEncoder):
+    def __init__(self, kg_graph_repr: Dict[str, np.ndarray], config: dict):
+
+        super().__init__(kg_graph_repr, config)
+        self.drop = torch.nn.Dropout(self.hid_drop)
+
+    def forward(self, sub, rel, quals):
+
+        """
+            quals is (bs, 2*maxQpairs)
+        """
+        sub_emb, rel_emb, qual_obj_emb, qual_rel_emb, all_ent = \
+            self.forward_base(sub, rel, self.drop, self.drop, quals, True)
+
+        obj_emb = sub_emb * rel_emb * torch.prod(qual_rel_emb * qual_obj_emb, 1)
+
+        x = torch.mm(obj_emb, all_ent.transpose(1, 0))
+        x += self.bias.expand_as(x)
+
+        score = torch.sigmoid(x)
+        return score
+
+
 class CompGCNDistMult(CompQGCNEncoder):
     def __init__(self, kg_graph_repr: Dict[str, np.ndarray], config: dict):
 
@@ -1005,6 +1028,77 @@ class CompGCNConvE(CompQGCNEncoder):
         sub_emb, rel_emb, all_ent = self.forward_base(sub, rel, self.hidden_drop,
                                                       self.feature_drop)
         stk_inp = self.concat(sub_emb, rel_emb)
+        x = self.bn0(stk_inp)
+        x = self.m_conv1(x)
+        x = self.bn1(x)
+        x = F.relu(x)
+        x = self.feature_drop(x)
+        x = x.view(-1, self.flat_sz)
+        x = self.fc(x)
+        x = self.hidden_drop2(x)
+        x = self.bn2(x)
+        x = F.relu(x)
+
+        x = torch.mm(x, all_ent.transpose(1, 0))
+        x += self.bias.expand_as(x)
+
+        score = torch.sigmoid(x)
+        return score
+
+
+class CompGCNConvEStatement(CompQGCNEncoder):
+    def __init__(self, kg_graph_repr: Dict[str, np.ndarray], config: dict):
+        super(self.__class__, self).__init__(kg_graph_repr, config)
+
+        self.hid_drop2 = config['COMPGCNARGS']['HID_DROP2']
+        self.feat_drop = config['COMPGCNARGS']['FEAT_DROP']
+        self.n_filters = config['COMPGCNARGS']['N_FILTERS']
+        self.kernel_sz = config['COMPGCNARGS']['KERNEL_SZ']
+        # self.bias = config['COMPGCNARGS']['BIAS']
+        self.k_w = config['COMPGCNARGS']['K_W']
+        self.k_h = config['COMPGCNARGS']['K_H']
+
+        self.bn0 = torch.nn.BatchNorm2d(1)
+        self.bn1 = torch.nn.BatchNorm2d(self.n_filters)
+        self.bn2 = torch.nn.BatchNorm1d(self.emb_dim)
+
+        self.hidden_drop = torch.nn.Dropout(self.hid_drop)
+        self.hidden_drop2 = torch.nn.Dropout(self.hid_drop2)
+        self.feature_drop = torch.nn.Dropout(self.feat_drop)
+        self.m_conv1 = torch.nn.Conv2d(1, out_channels=self.n_filters,
+                                       kernel_size=(self.kernel_sz, self.kernel_sz), stride=1,
+                                       padding=0, bias=config['COMPGCNARGS']['BIAS'])
+        assert 2 * self.k_w > self.kernel_sz and self.k_h > self.kernel_sz, "kernel size is incorrect"
+        assert self.emb_dim * (config['MAX_QPAIRS'] - 1) == 2 * self.k_w * self.k_h, "Incorrect combination of conv params and emb dim " \
+                                                    " ConvE decoder will not work properly, " \
+                                                    " should be emb_dim * (pairs - 1) == 2* k_w * k_h"
+
+        flat_sz_h = int(2 * self.k_w) - self.kernel_sz + 1
+        flat_sz_w = self.k_h - self.kernel_sz + 1
+        self.flat_sz = flat_sz_h * flat_sz_w * self.n_filters
+        self.fc = torch.nn.Linear(self.flat_sz, self.emb_dim)
+
+    def concat(self, e1_embed, rel_embed, qual_rel_embed, qual_obj_embed):
+        e1_embed = e1_embed.view(-1, 1, self.emb_dim)
+        rel_embed = rel_embed.view(-1, 1, self.emb_dim)
+        """
+            arrange quals in the conve format with shape [bs, num_qual_pairs, emb_dim]
+            num_qual_pairs is 2 * (any qual tensor shape[1])
+            for each datum in bs the order will be 
+                rel1, emb
+                en1, emb
+                rel2, emb
+                en2, emb
+        """
+        quals = torch.cat((qual_rel_embed, qual_obj_embed), 2).view(-1, 2*qual_rel_embed.shape[1], qual_rel_embed.shape[2])
+        stack_inp = torch.cat([e1_embed, rel_embed, quals], 1)  # [bs, 2 + num_qual_pairs, emb_dim]
+        stack_inp = torch.transpose(stack_inp, 2, 1).reshape((-1, 1, 2 * self.k_w, self.k_h))
+        return stack_inp
+
+    def forward(self, sub, rel, quals):
+        sub_emb, rel_emb, qual_obj_emb, qual_rel_emb, all_ent = \
+            self.forward_base(sub, rel, self.hidden_drop, self.feature_drop, quals, True)
+        stk_inp = self.concat(sub_emb, rel_emb, qual_rel_emb, qual_obj_emb)
         x = self.bn0(stk_inp)
         x = self.m_conv1(x)
         x = self.bn1(x)

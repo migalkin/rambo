@@ -24,7 +24,8 @@ from utils import *
 from evaluation import EvaluationBench, EvaluationBenchArity, \
     EvaluationBenchGNNMultiClass, evaluate_pointwise
 from evaluation import acc, mrr, mr, hits_at
-from models import TransE, ConvKB, KBGat, CompGCNConvE, CompGCNDistMult, CompGCNTransE, CompGCNTransEStatements
+from models import TransE, ConvKB, KBGat, CompGCNConvE, CompGCNDistMult, CompGCNTransE, CompGCNTransEStatements, \
+    CompGCNDistMultStatement, CompGCNConvEStatement
 from corruption import Corruption
 from sampler import SimpleSampler, NeighbourhoodSampler, MultiClassSampler
 from loops import training_loop, training_loop_neighborhood, training_loop_gcn
@@ -86,8 +87,7 @@ DEFAULT_CONFIG = {
     'WANDB': False,
     'LABEL_SMOOTHING': 0.0,
     'SAMPLER_W_QUALIFIERS': False,
-    'OPTIMIZER': 'adam',
-    'REMOVE_TRIPLE_DUPLICATES': True,
+    'OPTIMIZER': 'adam'
 }
 
 KBGATARGS = {
@@ -206,24 +206,6 @@ if __name__ == "__main__":
     # Break down the data
     try:
         train_data, valid_data, test_data, n_entities, n_relations, _, _ = data.values()
-        # if config['REMOVE_TRIPLE_DUPLICATES'] and config['STATEMENT_LEN'] == 3:
-        #     train_data = [x for x in train_data if x not in valid_data]
-        #     if config['USE_TEST']:
-        #         train_data = [x for x in train_data if x not in test_data]
-        #         valid_data = [x for x in valid_data if x not in test_data]
-        # elif config['REMOVE_TRIPLE_DUPLICATES'] and config['STATEMENT_LEN'] == -1:
-        #     if config['SAMPLER_W_QUALIFIERS']:
-        #         # we expect all data points are unique at this stage
-        #         pass
-        #     else:
-        #         # when we're in the no_quals decoder mode -> prune the train set out of [s,p,o] points from the test set
-        #         val_spos = [[x[0], x[1], x[2]] for x in valid_data]
-        #         train_data = [x for x in train_data if [x[0], x[1], x[2]] not in val_spos]
-        #         if config['USE_TEST']:
-        #             test_spos = [[x[0], x[1], x[2]] for x in test_data]
-        #             train_data = [x for x in train_data if [x[0], x[1], x[2]] not in test_spos]
-        #             valid_data = [x for x in valid_data if [x[0], x[1], x[2]] not in test_spos]
-
     except ValueError:
         raise ValueError(f"Honey I broke the loader for {config['DATASET']}")
 
@@ -301,9 +283,15 @@ if __name__ == "__main__":
             else:
                 model = CompGCNTransE(train_data_gcn, config)
         elif config['MODEL_NAME'].lower().endswith('conve'):
-            model = CompGCNConvE(train_data_gcn, config)
+            if config['SAMPLER_W_QUALIFIERS']:
+                model = CompGCNConvEStatement(train_data_gcn, config)
+            else:
+                model = CompGCNConvE(train_data_gcn, config)
         elif config['MODEL_NAME'].lower().endswith('distmult'):
-            model = CompGCNDistMult(train_data_gcn, config)
+            if config['SAMPLER_W_QUALIFIERS']:
+                model = CompGCNDistMultStatement(train_data_gcn, config)
+            else:
+                model = CompGCNDistMult(train_data_gcn, config)
         else:
             raise BadParameters(f"Unknown Model Name {config['MODEL_NAME']}")
     else:

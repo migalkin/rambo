@@ -1804,7 +1804,7 @@ if __name__ == "__main__":
 
     # ds = load_clean_wikipeople_statements(maxlen=43)
     # ds = load_fb15k237()
-    ds = load_wd15k_statements(maxlen=17)
+    ds = load_jf17k_statements()
     count_stats(ds)
 
 
