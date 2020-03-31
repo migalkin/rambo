@@ -4,6 +4,7 @@ import types
 
 # Local
 from utils import *
+from utils_mytorch import Timer
 from corruption import Corruption
 
 
