@@ -4,7 +4,7 @@ import numpy as np
 import random
 from tqdm.autonotebook import tqdm
 
-from mytorch.utils.goodies import compute_mask
+from utils_mytorch import compute_mask
 from utils import *
 
 

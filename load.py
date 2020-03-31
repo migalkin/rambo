@@ -9,7 +9,7 @@ import numpy as np
 import pickle
 from utils import PARSED_DATA_DIR, KNOWN_DATASETS
 from pathlib import Path
-from mytorch.utils.goodies import FancyDict
+from utils_mytorch import FancyDict
 import random
 #from utils import *
 

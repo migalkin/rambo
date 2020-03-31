@@ -1,7 +1,7 @@
 from functools import partial
 from typing import List, Union, Dict, Callable
 import numpy as np
-from mytorch.utils.goodies import FancyDict
+from utils_mytorch import FancyDict
 from utils import KNOWN_DATASETS
 
 from load import load_fb15k237, load_fb15k, \

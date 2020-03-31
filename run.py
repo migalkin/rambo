@@ -17,7 +17,7 @@ import collections
 #from mytorch.utils.goodies import *
 
 # Local imports
-from parse_wd15k import Quint
+#from parse_wd15k import Quint
 #from load import DataManager
 from data_manager import DataManager
 from utils import *

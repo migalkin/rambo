@@ -8,7 +8,7 @@ import numpy.random as npr
 from collections import namedtuple, defaultdict
 from typing import Optional, List, Union, Dict, Callable, Tuple
 
-from mytorch.utils.goodies import Timer, FancyDict, compute_mask
+#from mytorch.utils.goodies import Timer, FancyDict, compute_mask
 #import load as l
 
 Quint = namedtuple('Quint', 's p o qp qe')

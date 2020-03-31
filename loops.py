@@ -2,8 +2,9 @@ import wandb
 from tqdm.autonotebook import tqdm
 from typing import Callable
 
-from mytorch import dataiters
-from mytorch.utils.goodies import *
+#from mytorch import dataiters
+#from mytorch.utils.goodies import *
+from utils_mytorch import *
 
 from corruption import Corruption
 
@@ -15,7 +16,7 @@ def training_loop(epochs: int,
                   train_fn: Callable,
                   neg_generator: Corruption,
                   device: torch.device = torch.device('cpu'),
-                  data_fn: Callable = dataiters.SimplestSampler,
+                  data_fn: Callable = SimplestSampler,
                   eval_fn_trn: Callable = default_eval,
                   val_testbench: Callable = default_eval,
                   trn_testbench: Callable = default_eval,
@@ -253,7 +254,7 @@ def training_loop_neighborhood(epochs: int,
                                opt: torch.optim,
                                train_fn: Callable,
                                device: torch.device = torch.device('cpu'),
-                               data_fn: Callable = dataiters.SimplestSampler,
+                               data_fn: Callable = SimplestSampler,
                                eval_fn_trn: Callable = default_eval,
                                val_testbench: Callable = default_eval,
                                trn_testbench: Callable = default_eval,
@@ -499,7 +500,7 @@ def training_loop_gcn(epochs: int,
                       train_fn: Callable,
                       neg_generator: Corruption,
                       device: torch.device = torch.device('cpu'),
-                      data_fn: Callable = dataiters.SimplestSampler,
+                      data_fn: Callable = SimplestSampler,
                       eval_fn_trn: Callable = default_eval,
                       val_testbench: Callable = default_eval,
                       trn_testbench: Callable = default_eval,

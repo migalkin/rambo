@@ -1,32 +1,59 @@
-from typing import List, Dict
+from typing import List, Dict, Union
 from pathlib import Path
+from collections import namedtuple
 import warnings
 import os
+import time
+import torch
+import numpy as np
+import pickle
+import traceback
 
 class ImproperCMDArguments(Exception): pass
+class MismatchedDataError(Exception): pass
 class BadParameters(Exception):
     def __init___(self, dErrorArguments):
         Exception.__init__(self, "Unexpected value of parameter {0}".format(dErrorArguments))
         self.dErrorArguments = dErrorArguments
 
+tosave = namedtuple('ObjectsToSave','fname obj')
 
 class FancyDict(dict):
     def __init__(self, *args, **kwargs):
         super().__init__(**kwargs)
         self.__dict__ = self
 
-# def compute_mask(t: Union[torch.Tensor, np.array], padding_idx=0):
-#     """
-#     compute mask on given tensor t
-#     :param t: either a tensor or a nparry
-#     :param padding_idx: the ID used to represented padded data
-#     :return: a mask of the same shape as t
-#     """
-#     if type(t) is np.ndarray:
-#         mask = np.not_equal(t, padding_idx)*1.0
-#     else:
-#         mask = torch.ne(t, padding_idx).float()
-#     return mask
+class Timer:
+    """ Simple block which can be called as a context, to know the time of a block. """
+    def __enter__(self):
+        self.start = time.perf_counter()
+        return self
+
+    def __exit__(self, *args):
+        self.end = time.perf_counter()
+        self.interval = self.end - self.start
+
+def default_eval(y_pred, y_true):
+    """
+        Expects a batch of input
+
+        :param y_pred: tensor of shape (b, nc)
+        :param y_true: tensor of shape (b, 1)
+    """
+    return torch.mean((torch.argmax(y_pred, dim=1) == y_true).float())
+
+def compute_mask(t: Union[torch.Tensor, np.array], padding_idx=0):
+    """
+    compute mask on given tensor t
+    :param t: either a tensor or a nparry
+    :param padding_idx: the ID used to represented padded data
+    :return: a mask of the same shape as t
+    """
+    if type(t) is np.ndarray:
+        mask = np.not_equal(t, padding_idx)*1.0
+    else:
+        mask = torch.ne(t, padding_idx).float()
+    return mask
 
 # Transparent, and simple argument parsing FTW!
 def convert_nicely(arg, possible_types=(bool, float, int, str)):
@@ -156,3 +183,103 @@ def mt_save_dir(parentdir: Path, _newdir: bool = False):
         parentdir = parentdir / str(existing[0])
 
     return parentdir
+
+
+def mt_save(savedir: Path, message: str = None, message_fname: str = None, torch_stuff: list = None, pickle_stuff: list = None,
+            numpy_stuff: list = None, json_stuff: list = None):
+    """
+
+        Saves bunch of diff stuff in a particular dict.
+
+        NOTE: all the stuff to save should also have an accompanying filename, and so we use tosave named tuple defined above as
+            tosave = namedtuple('ObjectsToSave','fname obj')
+
+        ** Usage **
+        # say `encoder` is torch module, and `traces` is a python obj (dont care what)
+        parentdir = Path('runs')
+        savedir = save_dir(parentdir, _newdir=True)
+        save(
+                savedir,
+                torch_stuff = [tosave(fname='model.torch', obj=encoder)],
+                pickle_stuff = [tosave('traces.pkl', traces)]
+            )
+
+
+    :param savedir: pathlib.Path object of the parent directory
+    :param message: a message to be saved in the folder alongwith (as text)
+    :param torch_stuff: list of tosave tuples to be saved with torch.save functions
+    :param pickle_stuff: list of tosave tuples to be saved with pickle.dump
+    :param numpy_stuff: list of tosave tuples to be saved with numpy.save
+    :param json_stuff: list of tosave tuples to be saved with json.dump
+    :return: None
+    """
+
+    assert savedir.is_dir(), f'{savedir} is not a directory!'
+
+    # Commence saving shit!
+    if message:
+        with open(savedir / 'message.txt' if message_fname is None else savedir / message_fname, 'w+') as f:
+            f.write(message)
+
+    for data in torch_stuff or ():
+        try:
+            torch.save(data.obj, savedir / data.fname)
+        except:
+            traceback.print_exc()
+
+    for data in pickle_stuff or ():
+        try:
+            pickle.dump(data.obj, open(savedir / data.fname, 'wb+'))
+        except:
+            traceback.print_exc()
+
+    for data in numpy_stuff or ():
+        try:
+            np.save(savedir / data.fname, data.obj)
+        except:
+            traceback.print_exc()
+
+    for data in json_stuff or ():
+        try:
+            json.dump(data.obj, open(savedir / data.fname, 'w+'))
+        except:
+            traceback.print_exc()
+
+
+class SimplestSampler:
+    """
+        Given X and Y matrices (or lists of lists),
+            it returns a batch worth of stuff upon __next__
+    :return:
+    """
+
+    def __init__(self, data, bs: int = 64):
+
+        try:
+            assert len(data["x"]) == len(data["y"])
+        except AssertionError:
+
+            raise MismatchedDataError(f"Length of x is {len(data['x'])} while of y is {len(data['y'])}")
+
+        self.x = data["x"]
+        self.y = data["y"]
+        self.n = len(self.x)
+        self.bs = bs  # Batch Size
+
+    def __len__(self):
+        return self.n // self.bs - (1 if self.n % self.bs else 0)
+
+    def __iter__(self):
+        self.i, self.iter = 0, 0
+        return self
+
+    def __next__(self):
+        if self.i + self.bs >= self.n:
+            raise StopIteration
+
+        _x, _y = self.x[self.i:self.i + self.bs], self.y[self.i:self.i + self.bs]
+        self.i += self.bs
+
+        return _x, _y
+
+
