@@ -14,13 +14,14 @@ import sys
 import collections
 
 # MyTorch imports
-from mytorch.utils.goodies import *
+#from mytorch.utils.goodies import *
 
 # Local imports
 from parse_wd15k import Quint
 #from load import DataManager
 from data_manager import DataManager
 from utils import *
+from utils_mytorch import FancyDict, parse_args, BadParameters, mt_save_dir
 from evaluation import EvaluationBench, EvaluationBenchArity, \
     EvaluationBenchGNNMultiClass, evaluate_pointwise
 from evaluation import acc, mrr, mr, hits_at
