@@ -26,7 +26,7 @@ from evaluation import EvaluationBench, EvaluationBenchArity, \
     EvaluationBenchGNNMultiClass, evaluate_pointwise
 from evaluation import acc, mrr, mr, hits_at
 from models import TransE, ConvKB, KBGat, CompGCNConvE, CompGCNDistMult, CompGCNTransE, CompGCNTransEStatements, \
-    CompGCNDistMultStatement, CompGCNConvEStatement
+    CompGCNDistMultStatement, CompGCNConvEStatement, CompGCN_ConvKB, CompGCN_ConvKB_Statement
 from corruption import Corruption
 from sampler import SimpleSampler, NeighbourhoodSampler, MultiClassSampler
 from loops import training_loop, training_loop_neighborhood, training_loop_gcn
@@ -236,15 +236,11 @@ if __name__ == "__main__":
                 train_data_gcn = DataManager.get_graph_repr(train_data + valid_data, config)
             else:
                 train_data_gcn = DataManager.get_graph_repr(train_data, config)
-            # valid_data_gcn = DataManager.get_graph_repr(valid_data, config)
-            # test_data_gcn = DataManager.get_graph_repr(test_data, config)
         elif config['COMPGCNARGS']['QUAL_REPR'] == 'sparse':
             if config['USE_TEST']:
                 train_data_gcn = DataManager.get_alternative_graph_repr(train_data + valid_data, config)
             else:
                 train_data_gcn = DataManager.get_alternative_graph_repr(train_data, config)
-            # valid_data_gcn = DataManager.get_alternative_graph_repr(valid_data, config)
-            # test_data_gcn = DataManager.get_alternative_graph_repr(test_data, config)
         else:
             print("Supported QUAL_REPR are `full` or `sparse`")
             raise NotImplementedError
@@ -293,6 +289,15 @@ if __name__ == "__main__":
                 model = CompGCNDistMultStatement(train_data_gcn, config)
             else:
                 model = CompGCNDistMult(train_data_gcn, config)
+        elif config['MODEL_NAME'].lower().endswith('convkb'):
+            if config['SAMPLER_W_QUALIFIERS']:
+                print(
+                    f"ConvKB will use {(config['MAX_QPAIRS']-1, config['COMPGCNARGS']['KERNEL_SZ'])} kernel. Otherwize change KERNEL_SZ param. Standard is 1")
+                model = CompGCN_ConvKB_Statement(train_data_gcn, config)
+            else:
+                print(
+                    f"ConvKB will use {(2, config['COMPGCNARGS']['KERNEL_SZ'])} kernel. Otherwize change KERNEL_SZ param. Standard is 1")
+                model = CompGCN_ConvKB(train_data_gcn, config)
         else:
             raise BadParameters(f"Unknown Model Name {config['MODEL_NAME']}")
     else:
