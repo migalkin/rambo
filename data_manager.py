@@ -14,7 +14,7 @@ from load import load_fb15k237, load_fb15k, \
     load_wd15k_66_statements, load_wd15k_66_quints, load_wd15k_66_triples, \
     load_wd15k_33_statements, load_wd15k_33_quints, load_wd15k_33_triples
 
-from clean_datasets import load_clean_wikipeople_statements
+from clean_datasets import load_clean_wikipeople_statements, load_clean_jf17k_statements, load_clean_wd15k
 
 class DataManager(object):
     """ Give me your args I'll give you a path to load the dataset with my superawesome AI """
@@ -28,65 +28,137 @@ class DataManager(object):
 
         if config['DATASET'] == 'wd15k':
             if config['STATEMENT_LEN'] == 5:
-                return load_wd15k_quints
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wd15k, name="wd15k", subtype="quints")
+                else:
+                    return load_wd15k_quints
             elif config['STATEMENT_LEN'] == 3:
-                return load_wd15k_triples
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wd15k, name="wd15k", subtype="triples")
+                else:
+                    return load_wd15k_triples
             else:
-                return partial(load_wd15k_statements, maxlen=config['MAX_QPAIRS'])
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wd15k, name="wd15k", subtype="statements", maxlen=config['MAX_QPAIRS'])
+                else:
+                    return partial(load_wd15k_statements, maxlen=config['MAX_QPAIRS'])
         elif config['DATASET'] == 'wikipeople':
             if config['STATEMENT_LEN'] == 5:
-                return load_wikipeople_quints
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wikipeople_statements, subtype="quints")
+                else:
+                    return load_wikipeople_quints
             elif config['STATEMENT_LEN'] == 3:
-                return load_wikipeople_triples
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wikipeople_statements, subtype="triples")
+                else:
+                    return load_wikipeople_triples
             else:
                 print("Here mf")
-                return partial(load_wikipeople_statements, maxlen=config['MAX_QPAIRS'])
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wikipeople_statements, subtype="statements", maxlen=config['MAX_QPAIRS'])
+                else:
+                    return partial(load_wikipeople_statements, maxlen=config['MAX_QPAIRS'])
         elif config['DATASET'] == 'wd15k_qonly':
             if config['STATEMENT_LEN'] == 5:
-                return load_wd15k_qonly_quints
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wd15k, name="wd15k_qonly", subtype="quints")
+                else:
+                    return load_wd15k_qonly_quints
             elif config['STATEMENT_LEN'] == 3:
-                return load_wd15k_qonly_triples
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wd15k, name="wd15k_qonly", subtype="triples")
+                else:
+                    return load_wd15k_qonly_triples
             else:
-                return partial(load_wd15k_qonly_statements, maxlen=config['MAX_QPAIRS'])
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wd15k, name="wd15k_qonly", subtype="statements", maxlen=config['MAX_QPAIRS'])
+                else:
+                    return partial(load_wd15k_qonly_statements, maxlen=config['MAX_QPAIRS'])
         elif config['DATASET'] == 'wd15k_qonly_33':
             if config['STATEMENT_LEN'] == 5:
-                return load_wd15k_qonly_33_quints
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wd15k, name="wd15k_qonly_33", subtype="quints")
+                else:
+                    return load_wd15k_qonly_33_quints
             elif config['STATEMENT_LEN'] == 3:
-                return load_wd15k_qonly_33_triples
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wd15k, name="wd15k_qonly_33", subtype="triples")
+                else:
+                    return load_wd15k_qonly_33_triples
             else:
-                return partial(load_wd15k_qonly_33_statements, maxlen=config['MAX_QPAIRS'])
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wd15k, name="wd15k_qonly_33", subtype="statements", maxlen=config['MAX_QPAIRS'])
+                else:
+                    return partial(load_wd15k_qonly_33_statements, maxlen=config['MAX_QPAIRS'])
         elif config['DATASET'] == 'wd15k_qonly_66':
             if config['STATEMENT_LEN'] == 5:
-                return load_wd15k_qonly_66_quints
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wd15k, name="wd15k_qonly_66", subtype="quints")
+                else:
+                    return load_wd15k_qonly_66_quints
             elif config['STATEMENT_LEN'] == 3:
-                return load_wd15k_qonly_66_triples
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wd15k, name="wd15k_qonly_66", subtype="triples")
+                else:
+                    return load_wd15k_qonly_66_triples
             else:
-                return partial(load_wd15k_qonly_66_statements, maxlen=config['MAX_QPAIRS'])
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wd15k, name="wd15k_qonly_66", subtype="statements", maxlen=config['MAX_QPAIRS'])
+                else:
+                    return partial(load_wd15k_qonly_66_statements, maxlen=config['MAX_QPAIRS'])
         elif config['DATASET'] == 'wd15k_33':
             if config['STATEMENT_LEN'] == 5:
-                return load_wd15k_33_quints
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wd15k, name="wd15k_33", subtype="quints")
+                else:
+                    return load_wd15k_33_quints
             elif config['STATEMENT_LEN'] == 3:
-                return load_wd15k_33_triples
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wd15k, name="wd15k_33", subtype="triples")
+                else:
+                    return load_wd15k_33_triples
             else:
-                return partial(load_wd15k_33_statements, maxlen=config['MAX_QPAIRS'])
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wd15k, name="wd15k_33", subtype="statements", maxlen=config['MAX_QPAIRS'])
+                else:
+                    return partial(load_wd15k_33_statements, maxlen=config['MAX_QPAIRS'])
         elif config['DATASET'] == 'wd15k_66':
             if config['STATEMENT_LEN'] == 5:
-                return load_wd15k_66_quints
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wd15k, name="wd15k_66", subtype="quints")
+                else:
+                    return load_wd15k_66_quints
             elif config['STATEMENT_LEN'] == 3:
-                return load_wd15k_66_triples
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wd15k, name="wd15k_66", subtype="triples")
+                else:
+                    return load_wd15k_66_triples
             else:
-                return partial(load_wd15k_66_statements, maxlen=config['MAX_QPAIRS'])
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_wd15k, name="wd15k_66", subtype="statements", maxlen=config['MAX_QPAIRS'])
+                else:
+                    return partial(load_wd15k_66_statements, maxlen=config['MAX_QPAIRS'])
         elif config['DATASET'] == 'fb15k':
             return load_fb15k
         elif config['DATASET'] == 'fb15k237':
             return load_fb15k237
         elif config['DATASET'] == 'jf17k':
             if config['STATEMENT_LEN'] == 5:
-                return load_jf17k_quints
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_jf17k_statements, subtype="quints")
+                else:
+                    return load_jf17k_quints
             elif config['STATEMENT_LEN'] == 3:
-                return load_jf17k_triples
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_jf17k_statements, subtype="triples")
+                else:
+                    return load_jf17k_triples
             elif config['STATEMENT_LEN'] == -1:
-                return partial(load_jf17k_statements, maxlen=config['MAX_QPAIRS'])
+                if config['CLEANED_DATASET']:
+                    return partial(load_clean_jf17k_statements, subtype="statements", maxlen=config['MAX_QPAIRS'])
+                else:
+                    return partial(load_jf17k_statements, maxlen=config['MAX_QPAIRS'])
 
     @staticmethod
     def gather_missing_entities(data: List[list], n_ents: int, positions: List[int]) -> np.array:

@@ -88,7 +88,8 @@ DEFAULT_CONFIG = {
     'WANDB': False,
     'LABEL_SMOOTHING': 0.0,
     'SAMPLER_W_QUALIFIERS': False,
-    'OPTIMIZER': 'adam'
+    'OPTIMIZER': 'adam',
+    'CLEANED_DATASET': False
 }
 
 KBGATARGS = {
