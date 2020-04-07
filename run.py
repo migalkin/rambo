@@ -27,6 +27,7 @@ from evaluation import EvaluationBench, EvaluationBenchArity, \
 from evaluation import acc, mrr, mr, hits_at
 from models import TransE, ConvKB, KBGat, CompGCNConvE, CompGCNDistMult, CompGCNTransE, CompGCNTransEStatements, \
     CompGCNDistMultStatement, CompGCNConvEStatement, CompGCN_ConvKB, CompGCN_ConvKB_Statement
+from models_statements import CompGCN_Transformer
 from corruption import Corruption
 from sampler import SimpleSampler, NeighbourhoodSampler, MultiClassSampler
 from loops import training_loop, training_loop_neighborhood, training_loop_gcn
@@ -120,8 +121,13 @@ COMPGCNARGS = {
     'FEAT_DROP': 0.3,
     'N_FILTERS': 200,
     'KERNEL_SZ': 7,
-    'K_W': 5 , # def 10
-    'K_H': 10 # def 20
+    'K_W': 5,  # def 10
+    'K_H': 10,  # def 20,
+
+    # For Transformer
+    'T_LAYERS': 2,
+    'T_N_HEADS': 4,
+    'T_HIDDEN': 512
 }
 
 DEFAULT_CONFIG['KBGATARGS'] = KBGATARGS
@@ -299,6 +305,12 @@ if __name__ == "__main__":
                 print(
                     f"ConvKB will use {(2, config['COMPGCNARGS']['KERNEL_SZ'])} kernel. Otherwize change KERNEL_SZ param. Standard is 1")
                 model = CompGCN_ConvKB(train_data_gcn, config)
+        elif config['MODEL_NAME'].lower().endswith('transformer'):
+            if config['SAMPLER_W_QUALIFIERS']:
+                model = CompGCN_Transformer(train_data_gcn, config)
+            else:
+                print("Transformer decoder is for qual decoder only (so far)")
+                raise NotImplementedError
         else:
             raise BadParameters(f"Unknown Model Name {config['MODEL_NAME']}")
     else:

@@ -817,15 +817,16 @@ class CompQGCNEncoder(CompGCNBase):
         self.register_parameter('bias', Parameter(torch.zeros(self.num_ent)))
 
     def forward_base(self, sub, rel, drop1, drop2,
-                     quals=None, embed_qualifiers: bool = False):
+                     quals=None, embed_qualifiers: bool = False, return_mask: bool = False):
         """
-        TODO: priyansh was here
+        TODO: priyansh was here, mike too
         :param sub:
         :param rel:
         :param drop1:
         :param drop2:
         :param quals: (optional) (bs, maxqpairs*2) Each row is [qp, qe, qp, qe, ...]
         :param embed_qualifiers: if True, we also indexselect qualifier information
+        :param return_mask: if True, returns a True/False mask of [bs, total_len] that says which positions were padded
         :return:
         """
 
@@ -887,7 +888,16 @@ class CompQGCNEncoder(CompGCNBase):
             qual_rel_emb = torch.index_select(r, 0, quals_rels)
             qual_obj_emb = qual_obj_emb.view(sub_emb.shape[0], -1 ,sub_emb.shape[1])
             qual_rel_emb = qual_rel_emb.view(rel_emb.shape[0], -1, rel_emb.shape[1])
-            return sub_emb, rel_emb, qual_obj_emb, qual_rel_emb, x
+            if not return_mask:
+                return sub_emb, rel_emb, qual_obj_emb, qual_rel_emb, x
+            else:
+                # mask which shows which entities were padded - for future purposes, True means to mask (in transformer)
+                # https://github.com/pytorch/pytorch/blob/master/torch/nn/functional.py : 3770
+                # so we first initialize with False
+                mask = torch.zeros((sub.shape[0], quals.shape[1] + 2)).bool()
+                # and put True where qual entities and relations are actually padding index 0
+                mask[:, 2:] = quals == 0
+                return sub_emb, rel_emb, qual_obj_emb, qual_rel_emb, x, mask
 
         return sub_emb, rel_emb, x
 
