@@ -894,7 +894,7 @@ class CompQGCNEncoder(CompGCNBase):
                 # mask which shows which entities were padded - for future purposes, True means to mask (in transformer)
                 # https://github.com/pytorch/pytorch/blob/master/torch/nn/functional.py : 3770
                 # so we first initialize with False
-                mask = torch.zeros((sub.shape[0], quals.shape[1] + 2)).bool()
+                mask = torch.zeros((sub.shape[0], quals.shape[1] + 2)).bool().to(self.device)
                 # and put True where qual entities and relations are actually padding index 0
                 mask[:, 2:] = quals == 0
                 return sub_emb, rel_emb, qual_obj_emb, qual_rel_emb, x, mask
