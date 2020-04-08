@@ -90,7 +90,10 @@ DEFAULT_CONFIG = {
     'LABEL_SMOOTHING': 0.0,
     'SAMPLER_W_QUALIFIERS': False,
     'OPTIMIZER': 'adam',
-    'CLEANED_DATASET': False
+    'CLEANED_DATASET': False,
+
+    'GRAD_CLIPPING': True,
+    'LR_SCHEDULER': True
 }
 
 KBGATARGS = {
@@ -409,7 +412,8 @@ if __name__ == "__main__":
         "run_trn_testbench": config['RUN_TESTBENCH_ON_TRAIN'],
         "savedir": savedir,
         "save_content": save_content,
-        "qualifier_aware": config['SAMPLER_W_QUALIFIERS']
+        "qualifier_aware": config['SAMPLER_W_QUALIFIERS'],
+        "grad_clipping": config['GRAD_CLIPPING']
     }
 
     if config['MODEL_NAME'] == 'kbgat':
@@ -435,6 +439,8 @@ if __name__ == "__main__":
         args['data_fn'] = sampler.reset
         args['val_testbench'] = evaluation_valid.run
         args['trn_testbench'] = None
+        if config['LR_SCHEDULER']:
+            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50 * len(sampler), gamma=0.95)
 
 
 

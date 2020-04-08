@@ -509,7 +509,8 @@ def training_loop_gcn(epochs: int,
                       run_trn_testbench: bool = True,
                       savedir: str = None,
                       save_content: Dict[str, list] = None,
-                      qualifier_aware: bool = False) -> (list, list, list):
+                      qualifier_aware: bool = False,
+                      grad_clipping: bool = True) -> (list, list, list):
     """
             A fn which can be used to train a language model.
 
@@ -587,6 +588,8 @@ def training_loop_gcn(epochs: int,
                 per_epoch_loss.append(loss.item())
 
                 loss.backward()
+                if grad_clipping:
+                    torch.nn.utils.clip_grad_norm_(train_fn.parameters(), 1.0)
                 opt.step()
 
                 # summary_val = val_testbench()
