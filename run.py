@@ -413,7 +413,8 @@ if __name__ == "__main__":
         "savedir": savedir,
         "save_content": save_content,
         "qualifier_aware": config['SAMPLER_W_QUALIFIERS'],
-        "grad_clipping": config['GRAD_CLIPPING']
+        "grad_clipping": config['GRAD_CLIPPING'],
+        "scheduler": None
     }
 
     if config['MODEL_NAME'] == 'kbgat':
@@ -440,7 +441,7 @@ if __name__ == "__main__":
         args['val_testbench'] = evaluation_valid.run
         args['trn_testbench'] = None
         if config['LR_SCHEDULER']:
-            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50 * len(sampler), gamma=0.95)
+            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.95)
 
 
 

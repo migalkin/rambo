@@ -510,7 +510,8 @@ def training_loop_gcn(epochs: int,
                       savedir: str = None,
                       save_content: Dict[str, list] = None,
                       qualifier_aware: bool = False,
-                      grad_clipping: bool = True) -> (list, list, list):
+                      grad_clipping: bool = True,
+                      scheduler: Callable = None) -> (list, list, list):
     """
             A fn which can be used to train a language model.
 
@@ -734,6 +735,9 @@ def training_loop_gcn(epochs: int,
                     'loss': float(np.mean(per_epoch_loss)),
                     # 'trn_acc': float(np.mean(per_epoch_tr_acc))
                 })
+        
+        if scheduler is not None:
+            scheduler.step()
 
     return train_acc, train_loss, \
            train_acc_bnchmk, train_mrr_bnchmk, \
