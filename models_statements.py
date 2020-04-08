@@ -25,7 +25,7 @@ class CompGCN_Transformer(CompQGCNEncoder):
         self.hidden_drop2 = torch.nn.Dropout(self.hid_drop2)
         self.feature_drop = torch.nn.Dropout(self.feat_drop)
 
-        encoder_layers = TransformerEncoderLayer(self.d_model, self.num_heads, self.num_hidden, config['COMPGCNARGS']['FEAT_DROP'])
+        encoder_layers = TransformerEncoderLayer(self.d_model, self.num_heads, self.num_hidden, config['COMPGCNARGS']['HID_DROP2'])
         self.encoder = TransformerEncoder(encoder_layers, config['COMPGCNARGS']['T_LAYERS'])
         self.position_embeddings = nn.Embedding(config['MAX_QPAIRS'] - 1, self.d_model)
         self.layer_norm = torch.nn.LayerNorm(self.emb_dim)
