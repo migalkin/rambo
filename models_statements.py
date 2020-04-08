@@ -102,13 +102,20 @@ class CompGCN_ConvPar(CompQGCNEncoder):
         self.feature_drop = torch.nn.Dropout(self.feat_drop)
 
         self.conv_layers = nn.ModuleList()
+        self.flat_sizes = dict()
         for i in range(2, config['MAX_QPAIRS'], 2):
             self.conv_layers.append(
                 torch.nn.Conv2d(1, out_channels=self.n_filters,
-                                kernel_size=(i, self.kernel_sz), stride=1, padding=0,
+                                kernel_size=(i, self.kernel_sz),
+                                stride=(config['MAX_QPAIRS'] - 1, 1),  # to limit to only one vertical pass along H
+                                padding=0,
                                 bias=config['COMPGCNARGS']['BIAS'])
             )
-
+            current_width = self.emb_dim - self.kernel_sz + 1
+            current_height = 1  # config['MAX_QPAIRS'] - i
+            current_flat_size = current_width * current_height
+            self.flat_sizes[i // 2] = current_flat_size
+        self.temp_flat_sz = self.emb_dim - self.kernel_sz + 1
         self.flat_sz = self.n_filters * (self.emb_dim - self.kernel_sz + 1)
         self.fc = torch.nn.Linear(self.flat_sz, self.emb_dim)
         # self._initialize()
@@ -135,13 +142,19 @@ class CompGCN_ConvPar(CompQGCNEncoder):
             self.forward_base(sub, rel, self.hidden_drop, self.feature_drop, quals, True)
         stk_inp = self.concat(sub_emb, rel_emb, qual_rel_emb, qual_obj_emb)
         x = self.bn0(stk_inp)
+
+        temp = torch.zeros((stk_inp.shape[2] // 2, stk_inp.shape[0], self.n_filters, self.temp_flat_sz),
+                           device=self.device)
         for i, layer in enumerate(self.conv_layers):
             output = layer(x)
+            output = F.relu(output)
+            output = self.feature_drop(output)
+            output = output.view(-1, self.n_filters, self.flat_sizes[i+1])
+            # output = self.fc_layers[i](output)
+            temp[i, :, :, :] = output
 
-        x = self.m_conv1(x)
-        x = self.bn1(x)
-        x = F.relu(x)
-        x = self.feature_drop(x)
+        x, _ = torch.min(temp, 0)
+        # x = self.feature_drop(x)
         x = x.view(-1, self.flat_sz)
         x = self.fc(x)
         x = self.hidden_drop2(x)
