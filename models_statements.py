@@ -148,19 +148,14 @@ class CompGCN_ConvPar(CompQGCNEncoder):
         for i, layer in enumerate(self.conv_layers):
             output = layer(x)
             output = F.relu(output)
-            output = self.feature_drop(output)
+            output = self.bn2(output)
             output = output.view(-1, self.n_filters, self.flat_sizes[i+1])
-            # output = self.fc_layers[i](output)
             temp[i, :, :, :] = output
 
         x, _ = torch.min(temp, 0)
-        # x = self.feature_drop(x)
         x = x.view(-1, self.flat_sz)
         x = self.fc(x)
         x = self.hidden_drop2(x)
-        x = self.bn2(x)
-        #  x = F.relu(x)
-
         x = torch.mm(x, all_ent.transpose(1, 0))
         x += self.bias.expand_as(x)
 
