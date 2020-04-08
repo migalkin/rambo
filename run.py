@@ -442,6 +442,7 @@ if __name__ == "__main__":
         args['trn_testbench'] = None
         if config['LR_SCHEDULER']:
             scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.95)
+            args['scheduler'] = scheduler
 
 
 
