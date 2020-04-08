@@ -127,7 +127,8 @@ COMPGCNARGS = {
     # For Transformer
     'T_LAYERS': 2,
     'T_N_HEADS': 4,
-    'T_HIDDEN': 512
+    'T_HIDDEN': 512,
+    'POSITIONAL': True
 }
 
 DEFAULT_CONFIG['KBGATARGS'] = KBGATARGS

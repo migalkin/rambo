@@ -19,6 +19,7 @@ class CompGCN_Transformer(CompQGCNEncoder):
         self.num_heads = config['COMPGCNARGS']['T_N_HEADS']
         self.num_hidden = config['COMPGCNARGS']['T_HIDDEN']
         self.d_model = config['EMBEDDING_DIM']
+        self.positional = config['COMPGCNARGS']['POSITIONAL']
 
         self.hidden_drop = torch.nn.Dropout(self.hid_drop)
         self.hidden_drop2 = torch.nn.Dropout(self.hid_drop2)
@@ -26,6 +27,8 @@ class CompGCN_Transformer(CompQGCNEncoder):
 
         encoder_layers = TransformerEncoderLayer(self.d_model, self.num_heads, self.num_hidden, config['COMPGCNARGS']['FEAT_DROP'])
         self.encoder = TransformerEncoder(encoder_layers, config['COMPGCNARGS']['T_LAYERS'])
+        self.position_embeddings = nn.Embedding(config['MAX_QPAIRS'] - 1, self.d_model)
+        self.layer_norm = torch.nn.LayerNorm(self.emb_dim)
 
         self.flat_sz = self.emb_dim * (config['MAX_QPAIRS'] - 1)
         self.fc = torch.nn.Linear(self.flat_sz, self.emb_dim)
@@ -53,6 +56,13 @@ class CompGCN_Transformer(CompQGCNEncoder):
             self.forward_base(sub, rel, self.hidden_drop, self.feature_drop, quals, True, True)
         stk_inp = self.concat(sub_emb, rel_emb, qual_rel_emb, qual_obj_emb)
 
+        if self.positional:
+            positions = torch.arange(stk_inp.shape[0], dtype=torch.long, device=self.device).repeat(stk_inp.shape[1], 1)
+            pos_embeddings = self.position_embeddings(positions).transpose(1, 0)
+            stk_inp = stk_inp + pos_embeddings
+
+        stk_inp = self.layer_norm(stk_inp)
+        stk_inp = self.hidden_drop2(stk_inp)
         x = self.encoder(stk_inp, src_key_padding_mask=mask)
         x = x.transpose(1, 0).reshape(-1, self.flat_sz)
         x = self.fc(x)
