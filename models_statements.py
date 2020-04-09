@@ -27,7 +27,7 @@ class CompGCN_Transformer(CompQGCNEncoder):
 
         encoder_layers = TransformerEncoderLayer(self.d_model, self.num_heads, self.num_hidden, config['COMPGCNARGS']['HID_DROP2'])
         self.encoder = TransformerEncoder(encoder_layers, config['COMPGCNARGS']['T_LAYERS'])
-        self.position_embeddings = nn.Embedding(config['MAX_QPAIRS'] - 1, self.d_model)
+        self.position_embeddings = nn.Embedding((config['MAX_QPAIRS'] - 1) // 2 + 1, self.d_model)
         self.layer_norm = torch.nn.LayerNorm(self.emb_dim)
 
         self.flat_sz = self.emb_dim * (config['MAX_QPAIRS'] - 1)
@@ -58,6 +58,14 @@ class CompGCN_Transformer(CompQGCNEncoder):
 
         if self.positional:
             positions = torch.arange(stk_inp.shape[0], dtype=torch.long, device=self.device).repeat(stk_inp.shape[1], 1)
+            """
+                op 2 - we want positional encodings to reflect key-value pairs along with the main triple
+                s p qp qe qp qe 0 0 0 0
+                1 1 2  2  3  3  0 0 0 0 
+            """
+            positions[:, 1::2] = positions[:, 0::2]  # turning 0 1 2 3 4 5 6 7 into 0 0 2 2 4 4 6 6
+            positions = (positions // 2) + 1  # turning into 1 2 3 4
+            positions = positions * (1 - mask.int())  # turning into 1 2 3 4 0 0 0 0 for masked positions
             pos_embeddings = self.position_embeddings(positions).transpose(1, 0)
             stk_inp = stk_inp + pos_embeddings
 
