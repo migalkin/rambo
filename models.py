@@ -15,7 +15,7 @@ import numpy as np
 from typing import List, Optional, Dict, Tuple
 
 # Local imports
-from utils_gcn import get_param, scatter_add, MessagePassing, ccorr
+from utils_gcn import get_param, scatter_add, MessagePassing, ccorr, rotate
 from utils import *
 from utils_mytorch import compute_mask
 
@@ -792,6 +792,12 @@ class CompQGCNEncoder(CompGCNBase):
             if self.model_nm.endswith('transe'):
                 self.init_rel = get_param((self.num_rel, self.emb_dim))
                 # self.init_rel = nn.Embedding(self.num_rel, self.emb_dim, padding_idx=0)
+            elif config['COMPGCNARGS']['OPN'] == 'rotate' or config['COMPGCNARGS']['QUAL_OPN'] == 'rotate':
+                phases = 2 * np.pi * torch.rand(self.num_rel, self.emb_dim // 2)
+                self.init_rel = nn.Parameter(torch.cat([
+                    torch.cat([torch.cos(phases), torch.sin(phases)], dim=-1),
+                    torch.cat([torch.cos(phases), -torch.sin(phases)], dim=-1)
+                ], dim=0))
             else:
                 self.init_rel = get_param((self.num_rel * 2, self.emb_dim))
                 # self.init_rel = nn.Embedding(self.num_rel * 2, self.emb_dim, padding_idx=0)
@@ -829,7 +835,6 @@ class CompQGCNEncoder(CompGCNBase):
         :param return_mask: if True, returns a True/False mask of [bs, total_len] that says which positions were padded
         :return:
         """
-
         r = self.init_rel if not self.model_nm.endswith('transe') \
             else torch.cat([self.init_rel, -self.init_rel], dim=0)
 
@@ -1148,7 +1153,7 @@ class CompQGCNConvLayer(MessagePassing):
         self.w_rel = get_param((in_channels, out_channels))  # (100,200)
 
         if self.p['STATEMENT_LEN'] != 3:
-            if self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'sum':
+            if self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'sum' or self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'attn':
                 self.w_q = get_param((in_channels, in_channels))  # new for quals setup
             elif self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'concat':
                 self.w_q = get_param((2 * in_channels, in_channels))  # need 2x size due to the concat operation
@@ -1337,6 +1342,8 @@ class CompQGCNConvLayer(MessagePassing):
             trans_embed = ent_embed - rel_embed
         elif self.p['COMPGCNARGS']['OPN'] == 'mult':
             trans_embed = ent_embed * rel_embed
+        elif self.p['COMPGCNARGS']['OPN'] == 'rotate':
+            trans_embed = rotate(ent_embed, rel_embed)
         else:
             raise NotImplementedError
 
@@ -1353,6 +1360,8 @@ class CompQGCNConvLayer(MessagePassing):
             trans_embed = qualifier_ent - qualifier_rel
         elif self.p['COMPGCNARGS']['QUAL_OPN'] == 'mult':
             trans_embed = qualifier_ent * qualifier_rel
+        elif self.p['COMPGCNARGS']['QUAL_OPN'] == 'rotate':
+            trans_embed = rotate(qualifier_ent, qualifier_rel)
         else:
             raise NotImplementedError
 
@@ -1387,6 +1396,14 @@ class CompQGCNConvLayer(MessagePassing):
             agg_rel = torch.cat((rel_part_emb, qualifier_emb), dim=1)  # [N_EDGES / 2 x 2 * EMB_DIM]
             return torch.mm(agg_rel, self.w_q)                         # [N_EDGES / 2 x EMB_DIM]
 
+        elif self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'attn':
+            if self.p['COMPGCNARGS']['QUAL_REPR'] == "full":
+                qualifier_emb = torch.mm(qualifier_emb.sum(axis=0), self.w_q)  # [N_EDGES / 2 x EMB_DIM]
+            elif self.p['COMPGCNARGS']['QUAL_REPR'] == "sparse":
+                qualifier_emb = torch.mm(self.coalesce_quals(qualifier_emb, qual_index, rel_part_emb.shape[0]), self.w_q)
+
+            aggregated = self._self_attention_2d(rel_part_emb, qualifier_emb)
+            return aggregated
         else:
             raise NotImplementedError
 
@@ -1468,6 +1485,17 @@ class CompQGCNConvLayer(MessagePassing):
             col]  # Norm parameter D^{-0.5} *
 
         return norm
+
+    def _self_attention_2d(self, main, qual):
+        """ Simple self attention """
+        # @TODO: Add scaling factor
+        scaling = float(main.shape[-1]) ** -0.5
+
+        ct = torch.cat((main.unsqueeze(2), qual.unsqueeze(2)), dim=1)
+        score = torch.bmm(ct, ct.transpose(2, 1)) * scaling
+        mask = compute_mask(score, padding_idx=0)
+        score = masked_softmax(score, mask)
+        return torch.sum(torch.mm(score, ct), dim=1)
 
     def coalesce_quals(self, qual_embeddings, qual_index, num_edges):
         """

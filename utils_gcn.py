@@ -122,6 +122,15 @@ def ccorr(a, b):
     return torch.irfft(com_mult(conj(torch.rfft(a, 1)), torch.rfft(b, 1)), 1,
                        signal_sizes=(a.shape[-1],))
 
+def rotate(h, r):
+    # re: first half, im: second half
+    # assume embedding dim is the last dimension
+    d = h.shape[-1]
+    h_re, h_im = torch.split(h, d // 2, -1)
+    r_re, r_im = torch.split(r, d // 2, -1)
+    return torch.cat([h_re * r_re - h_im * r_im,
+                        h_re * r_im + h_im * r_re], dim=-1)
+
 
 def scatter_(name, src, index, dim_size=None):
     r"""Aggregates all values from the :attr:`src` tensor at the indices
