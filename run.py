@@ -370,26 +370,26 @@ if __name__ == "__main__":
                     partial(hits_at, k=5), partial(hits_at, k=10)]
 
     # TODO: Make GCN friendly version of this.
-    if not config['NARY_EVAL']:
-        evaluation_valid = EvaluationBench(ev_vl_data, model, bs=8000, metrics=eval_metrics,
-                                           filtered=True, n_ents=n_entities,
-                                           excluding_entities=ent_excluded_from_corr,
-                                           positions=config.get('CORRUPTION_POSITIONS', None))
-        evaluation_train = EvaluationBench(ev_tr_data, model, bs=8000, metrics=eval_metrics,
-                                           filtered=True, n_ents=n_entities,
-                                           excluding_entities=ent_excluded_from_corr,
-                                           positions=config.get('CORRUPTION_POSITIONS', None),
-                                           trim=0.01)
-    else:
-        evaluation_valid = EvaluationBenchArity(ev_vl_data, model, bs=8000, metrics=eval_metrics,
-                                                filtered=True, n_ents=n_entities,
-                                                excluding_entities=ent_excluded_from_corr)
-        evaluation_train = EvaluationBenchArity(ev_tr_data, model, bs=8000, metrics=eval_metrics,
-                                                filtered=True, n_ents=n_entities,
-                                                excluding_entities=ent_excluded_from_corr,
-                                                trim=0.01)
-    # evaluation_valid = None
-    # evaluation_train = None
+    # if not config['NARY_EVAL']:
+    #     evaluation_valid = EvaluationBench(ev_vl_data, model, bs=8000, metrics=eval_metrics,
+    #                                        filtered=True, n_ents=n_entities,
+    #                                        excluding_entities=ent_excluded_from_corr,
+    #                                        positions=config.get('CORRUPTION_POSITIONS', None))
+    #     evaluation_train = EvaluationBench(ev_tr_data, model, bs=8000, metrics=eval_metrics,
+    #                                        filtered=True, n_ents=n_entities,
+    #                                        excluding_entities=ent_excluded_from_corr,
+    #                                        positions=config.get('CORRUPTION_POSITIONS', None),
+    #                                        trim=0.01)
+    # else:
+    #     evaluation_valid = EvaluationBenchArity(ev_vl_data, model, bs=8000, metrics=eval_metrics,
+    #                                             filtered=True, n_ents=n_entities,
+    #                                             excluding_entities=ent_excluded_from_corr)
+    #     evaluation_train = EvaluationBenchArity(ev_tr_data, model, bs=8000, metrics=eval_metrics,
+    #                                             filtered=True, n_ents=n_entities,
+    #                                             excluding_entities=ent_excluded_from_corr,
+    #                                             trim=0.01)
+    evaluation_valid = None
+    evaluation_train = None
 
     # Saving stuff
     if config['SAVE']:

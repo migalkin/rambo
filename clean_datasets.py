@@ -1,6 +1,8 @@
 from pathlib import Path
 from typing import Dict
 import random
+import pickle
+import numpy as np
 
 from load import _get_uniques_, _pad_statements_, count_stats, remove_dups
 
@@ -198,6 +200,90 @@ def load_clean_wd15k(name, subtype, maxlen=43) -> Dict:
 
     return {"train": train, "valid": valid, "test": test, "n_entities": len(st_entities),
             "n_relations": len(st_predicates), 'e2id': entoid, 'r2id': prtoid}
+
+
+def load_tkbc(name: str) -> Dict:
+    print("Loading Wikidata TKBC dataset...")
+    DIRNAME = Path(f'./data/clean/{name}')
+    with open(DIRNAME / 'train.pickle', 'rb') as train_file, \
+        open(DIRNAME / 'valid.pickle', 'rb') as val_file, \
+        open(DIRNAME / 'test.pickle', 'rb') as test_file:
+
+        train_data = pickle.load(train_file).astype(int)
+        val_data = pickle.load(val_file).astype(int)
+        test_data = pickle.load(test_file).astype(int)
+
+    if name == "tkbc":
+        with open(DIRNAME / 'ent_id', 'rb') as entoid, \
+            open(DIRNAME / 'rel_id', 'rb') as reltoid, \
+            open(DIRNAME / 'ts_id', 'rb') as tstoid:
+
+            entities = pickle.load(entoid)
+            rels = pickle.load(reltoid)
+            timestamps = pickle.load(tstoid)
+            rels['start_time'] = len(rels)
+            rels['end_time'] = len(rels)
+    else:
+        with open(DIRNAME / 'ent_id', 'r') as entoid, \
+            open(DIRNAME / 'rel_id', 'r') as reltoid, \
+            open(DIRNAME / 'ts_id', 'r') as tstoid:
+            entities = {x.strip("\n").split("\t")[0]: int(x.strip("\n").split("\t")[1])+1 for x in entoid.readlines()}
+            rels = {x.strip("\n").split("\t")[0]: int(x.strip("\n").split("\t")[1])+1 for x in reltoid.readlines()}
+            timestamps = {x.strip("\n").split("\t")[0]: int(x.strip("\n").split("\t")[1]) for x in tstoid.readlines()}
+            entities['__na__'] = 0
+            rels['__na__'] = 0
+            rels['time'] = len(rels)
+
+    total_ents = {}
+    for k,v in entities.items():
+        total_ents[k] = v
+    for k,v in timestamps.items():
+        total_ents[k] = v + len(entities)
+
+    # count all entities and relations
+    num_entities = len(entities) + len(timestamps)
+    num_relations = len(rels)
+
+    if name == "tkbc":
+        max_ts = len(timestamps) - 1
+        # remove if else for LARGE quals graph with 28M data points
+        train = [[x[0], x[1], x[2],
+                  rels['start_time'] if int(x[3]) != 0 else 0,
+                  int(x[3])+len(entities) if int(x[3]) != 0 else 0,
+                  rels['end_time'] if int(x[4]) != max_ts else 0,
+                  int(x[4])+len(entities) if int(x[4]) != max_ts else 0] for x in train_data]
+        val = [[x[0], x[1], x[2],
+                  rels['start_time'] if int(x[3]) != 0 else 0,
+                  int(x[3])+len(entities) if int(x[3]) != 0 else 0,
+                  rels['end_time'] if int(x[4]) != max_ts else 0,
+                  int(x[4])+len(entities) if int(x[4]) != max_ts else 0] for x in val_data]
+        test = [[x[0], x[1], x[2],
+                  rels['start_time'] if int(x[3]) != 0 else 0,
+                  int(x[3])+len(entities) if int(x[3]) != 0 else 0,
+                  rels['end_time'] if int(x[4]) != max_ts else 0,
+                  int(x[4])+len(entities) if int(x[4]) != max_ts else 0] for x in test_data]
+    elif name == "yago15k":
+        max_ts = len(timestamps)
+        train = [[x[0]+1, x[1]+1, x[2]+1,
+                  rels['time'] if int(x[3]) != max_ts else 0,
+                  int(x[3]) + len(entities) if int(x[3]) != max_ts else 0] for x in train_data]
+        val = [[x[0]+1, x[1]+1, x[2]+1,
+                rels['time'] if int(x[3]) != max_ts else 0,
+                int(x[3]) + len(entities) if int(x[3]) != max_ts else 0] for x in val_data]
+        test = [[x[0]+1, x[1]+1, x[2]+1,
+                 rels['time'] if int(x[3]) != max_ts else 0,
+                 int(x[3]) + len(entities) if int(x[3]) != max_ts else 0] for x in test_data]
+    else:
+        train = [[x[0]+1, x[1]+1, x[2]+1, rels['time'], int(x[3]) + len(entities)] for x in train_data]
+        val = [[x[0]+1, x[1]+1, x[2]+1, rels['time'], int(x[3]) + len(entities)] for x in val_data]
+        test = [[x[0]+1, x[1]+1, x[2]+1, rels['time'], int(x[3]) + len(entities)] for x in test_data]
+
+
+    print(f"Found {len(timestamps)} timestamps")
+
+    return {"train": train, "valid": val, "test": test, "n_entities": num_entities,
+            "n_relations": num_relations, 'e2id': total_ents, 'r2id': rels}
+
 
 if __name__ == "__main__":
     count_stats(load_clean_wd15k("wd15k", "statements", maxlen=43))
