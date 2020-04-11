@@ -15,7 +15,7 @@ from load import load_fb15k237, load_fb15k, \
     load_wd15k_33_statements, load_wd15k_33_quints, load_wd15k_33_triples
 
 from clean_datasets import load_clean_wikipeople_statements, load_clean_jf17k_statements, load_clean_wd15k, \
-    load_tkbc
+    load_tkbc, load_yago15k_quals
 
 class DataManager(object):
     """ Give me your args I'll give you a path to load the dataset with my superawesome AI """
@@ -152,6 +152,8 @@ class DataManager(object):
             return partial(load_tkbc, name="icews14")
         elif config['DATASET'] == 'icews05-15':
             return partial(load_tkbc, name="icews05-15")
+        elif config['DATASET'] == 'yago15k_quals':
+            return load_yago15k_quals
         elif config['DATASET'] == 'jf17k':
             if config['STATEMENT_LEN'] == 5:
                 if config['CLEANED_DATASET']:

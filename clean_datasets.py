@@ -1,8 +1,10 @@
 from pathlib import Path
 from typing import Dict
+from collections import defaultdict
 import random
 import pickle
 import numpy as np
+import re
 
 from load import _get_uniques_, _pad_statements_, count_stats, remove_dups
 
@@ -203,7 +205,7 @@ def load_clean_wd15k(name, subtype, maxlen=43) -> Dict:
 
 
 def load_tkbc(name: str) -> Dict:
-    print("Loading Wikidata TKBC dataset...")
+    print(f"Loading {name} TKBC dataset...")
     DIRNAME = Path(f'./data/clean/{name}')
     with open(DIRNAME / 'train.pickle', 'rb') as train_file, \
         open(DIRNAME / 'valid.pickle', 'rb') as val_file, \
@@ -283,6 +285,71 @@ def load_tkbc(name: str) -> Dict:
 
     return {"train": train, "valid": val, "test": test, "n_entities": num_entities,
             "n_relations": num_relations, 'e2id': total_ents, 'r2id': rels}
+
+
+def load_yago15k_quals():
+    DIRNAME = Path(f'./data/clean/yago15k_quals')
+    ents = set()
+    rels = set()
+    timestamps = defaultdict(int)
+
+    dataz = {'train': defaultdict(list), 'valid': defaultdict(list), 'test': defaultdict(list)}
+    files = ['train', 'valid', 'test']
+    for f in files:
+        with open(DIRNAME / f, "r") as source:
+            for line in source.readlines():
+                statement = line.strip().split('\t')
+                if len(statement) == 4:
+                    continue
+                elif len(statement) > 4:
+                    s, p, o, qp, qe = statement
+                    timestamp = int(re.search(r'\d+', qe).group())
+                    timestamps[str(timestamp)] += 1
+                    ents.add(s)
+                    ents.add(o)
+                    rels.add(p)
+                    rels.add(qp)
+                    dataz[f][(s,p,o)].append((qp, str(timestamp)))
+                else:
+                    s, p, o = statement
+                    ents.add(s)
+                    ents.add(o)
+                    rels.add(p)
+                    dataz[f][(s,p,o)].append(('__na__', '__na__'))
+
+    ents = sorted(list(ents)) + sorted(list(timestamps.keys()))
+    total_ents  = ['__na__'] + ents
+    total_rels = ['__na__'] + sorted(list(rels))
+    entoid = {x: i for (i, x) in enumerate(total_ents)}
+    reltoid = {x: i for (i, x) in enumerate(total_rels)}
+
+    num_entities = len(entoid)
+    num_relations = len(reltoid)
+    num_timestamps = len(timestamps)
+
+    # create final data
+    train, val, test = [], [], []
+    for triple, quals in dataz['train'].items():
+        s = [entoid[triple[0]], reltoid[triple[1]], entoid[triple[2]]]
+        for q in quals:
+            s = s + [reltoid[q[0]], entoid[q[1]]]
+        train.append(s)
+    for triple, quals in dataz['valid'].items():
+        s = [entoid[triple[0]], reltoid[triple[1]], entoid[triple[2]]]
+        for q in quals:
+            s = s + [reltoid[q[0]], entoid[q[1]]]
+        val.append(s)
+    for triple, quals in dataz['test'].items():
+        s = [entoid[triple[0]], reltoid[triple[1]], entoid[triple[2]]]
+        for q in quals:
+            s = s + [reltoid[q[0]], entoid[q[1]]]
+        test.append(s)
+
+    train, val, test = _pad_statements_(train, 7), _pad_statements_(val, 7), _pad_statements_(test, 7)
+    print(f"Found {len(timestamps)} timestamps")
+
+    return {"train": train, "valid": val, "test": test, "n_entities": num_entities,
+            "n_relations": num_relations, 'e2id':total_ents, 'r2id': total_rels}
 
 
 if __name__ == "__main__":
