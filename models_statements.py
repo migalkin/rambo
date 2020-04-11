@@ -63,9 +63,9 @@ class CompGCN_Transformer(CompQGCNEncoder):
                 s p qp qe qp qe 0 0 0 0
                 1 1 2  2  3  3  0 0 0 0 
             """
-            positions[:, 1::2] = positions[:, 0::2]  # turning 0 1 2 3 4 5 6 7 into 0 0 2 2 4 4 6 6
-            positions = (positions // 2) + 1  # turning into 1 2 3 4
-            positions = positions * (1 - mask.int())  # turning into 1 2 3 4 0 0 0 0 for masked positions
+            # positions[:, 1::2] = positions[:, 0::2]  # turning 0 1 2 3 4 5 6 7 into 0 0 2 2 4 4 6 6
+            # positions = (positions // 2) + 1  # turning into 1 2 3 4
+            # positions = positions * (1 - mask.int())  # turning into 1 2 3 4 0 0 0 0 for masked positions
             pos_embeddings = self.position_embeddings(positions).transpose(1, 0)
             stk_inp = stk_inp + pos_embeddings
 
