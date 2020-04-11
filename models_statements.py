@@ -79,7 +79,7 @@ class CompGCN_Transformer(CompQGCNEncoder):
         # x = F.relu(x)
 
         x = torch.mm(x, all_ent.transpose(1, 0))
-        x += self.bias.expand_as(x)
+        # x += self.bias.expand_as(x)
 
         score = torch.sigmoid(x)
         return score
