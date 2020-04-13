@@ -82,8 +82,21 @@ class CompGCN_Transformer(CompQGCNEncoder):
         return stack_inp
 
     def forward(self, sub, rel, quals):
+        '''
+
+
+        :param sub: bs
+        :param rel: bs
+        :param quals: bs*(sl-2) # bs*14
+        :return:
+
+
+        '''
         sub_emb, rel_emb, qual_obj_emb, qual_rel_emb, all_ent, mask = \
             self.forward_base(sub, rel, self.hidden_drop, self.feature_drop, quals, True, True)
+
+        # bs*emb_dim , ......, bs*6*emb_dim
+
         stk_inp = self.concat(sub_emb, rel_emb, qual_rel_emb, qual_obj_emb)
 
         if self.positional:
@@ -128,6 +141,128 @@ class CompGCN_Transformer(CompQGCNEncoder):
 
         score = torch.sigmoid(x)
         return score
+
+
+class CompGCN_ObjectMask_Transformer(CompQGCNEncoder):
+    model_name = 'CompGCN_ObjectMask_Transformer_Statement'
+
+    def __init__(self, kg_graph_repr: Dict[str, np.ndarray], config: dict, id2e: tuple = None):
+
+        super(self.__class__, self).__init__(kg_graph_repr, config)
+
+        self.model_name = 'CompGCN_Transformer_Statement'
+        self.hid_drop2 = config['COMPGCNARGS']['HID_DROP2']
+        self.feat_drop = config['COMPGCNARGS']['FEAT_DROP']
+        self.num_transformer_layers = config['COMPGCNARGS']['T_LAYERS']
+        self.num_heads = config['COMPGCNARGS']['T_N_HEADS']
+        self.num_hidden = config['COMPGCNARGS']['T_HIDDEN']
+        self.d_model = config['EMBEDDING_DIM']
+        self.positional = config['COMPGCNARGS']['POSITIONAL']
+        self.time = config['COMPGCNARGS']['TIME']  # treat qual values as numbers and pass them through the t_enc
+
+
+        self.object_mask_emb = torch.nn.Parameter(torch.randn(1, self.emb_dim,dtype=torch.float32),True)
+        self.hidden_drop = torch.nn.Dropout(self.hid_drop)
+        self.hidden_drop2 = torch.nn.Dropout(self.hid_drop2)
+        self.feature_drop = torch.nn.Dropout(self.feat_drop)
+
+        encoder_layers = TransformerEncoderLayer(self.d_model, self.num_heads, self.num_hidden, config['COMPGCNARGS']['HID_DROP2'])
+        self.encoder = TransformerEncoder(encoder_layers, config['COMPGCNARGS']['T_LAYERS'])
+        self.position_embeddings = nn.Embedding(config['MAX_QPAIRS'] - 1, self.d_model)
+        if self.time:
+            self.time_encoder = TimeEncode(self.d_model)
+            self.id2e = id2e[0]
+            self.tstoid = id2e[1]
+        self.layer_norm = torch.nn.LayerNorm(self.emb_dim)
+
+        self.flat_sz = self.emb_dim * (config['MAX_QPAIRS'] - 1)
+        self.fc = torch.nn.Linear(self.emb_dim, self.emb_dim)
+        # self._initialize()
+
+    def concat(self, e1_embed, rel_embed, obj_embed, qual_rel_embed, qual_obj_embed):
+        e1_embed = e1_embed.view(-1, 1, self.emb_dim)
+        rel_embed = rel_embed.view(-1, 1, self.emb_dim)
+        obj_embed = obj_embed.view(-1,1, self.emb_dim)
+        """
+            arrange quals in the conve format with shape [bs, num_qual_pairs, emb_dim]
+            num_qual_pairs is 2 * (any qual tensor shape[1])
+            for each datum in bs the order will be 
+                rel1, emb
+                en1, emb
+                rel2, emb
+                en2, emb
+        """
+        quals = torch.cat((qual_rel_embed, qual_obj_embed), 2).view(-1, 2 * qual_rel_embed.shape[1],
+                                                                    qual_rel_embed.shape[2])
+        stack_inp = torch.cat([e1_embed, rel_embed, obj_embed, quals], 1).transpose(1, 0)  # [2 + num_qual_pairs, bs, emb_dim]
+        return stack_inp        # 14, 128, 200
+
+    def forward(self, sub, rel, quals):
+        '''
+
+
+        :param sub: bs
+        :param rel: bs
+        :param quals: bs*(sl-2) # bs*14
+        :return:
+
+
+        '''
+        sub_emb, rel_emb, qual_obj_emb, qual_rel_emb, all_ent, mask = \
+            self.forward_base(sub, rel, self.hidden_drop, self.feature_drop, quals, True, True)
+
+
+        # bs*emb_dim , ......, bs*6*emb_dim
+        object_mask = self.object_mask_emb.repeat(sub.shape[0], 1)
+        ins = torch.zeros((sub.shape), dtype=torch.bool)
+        mask = torch.cat((mask[:, :2], ins.unsqueeze(1), mask[:, 2:]), axis=1)
+
+        stk_inp = self.concat(sub_emb, rel_emb, object_mask, qual_rel_emb, qual_obj_emb)
+
+        if self.positional:
+            positions = torch.arange(stk_inp.shape[0], dtype=torch.long, device=self.device).repeat(stk_inp.shape[1], 1)
+            """
+                op 2 - we want positional encodings to reflect key-value pairs along with the main triple
+                s p qp qe qp qe 0 0 0 0
+                1 1 2  2  3  3  0 0 0 0 
+            """
+            # positions[:, 1::2] = positions[:, 0::2]  # turning 0 1 2 3 4 5 6 7 into 0 0 2 2 4 4 6 6
+            # positions = (positions // 2) + 1  # turning into 1 2 3 4
+            # positions = positions * (1 - mask.int())  # turning into 1 2 3 4 0 0 0 0 for masked positions
+            pos_embeddings = self.position_embeddings(positions).transpose(1, 0)
+            if self.time:
+                # TODO: Time Magic here, mike tested for yago and icews, but debug if you want
+                time_embeddings = torch.zeros((stk_inp.shape[0], stk_inp.shape[1], stk_inp.shape[2]), dtype=torch.float, device=self.device)
+                # get qual values which are not padding indices
+                qual_non_padded = quals * (1 - mask[:, 2:].int())
+                quals_indices = qual_non_padded[:, 1::2].reshape(1, -1).squeeze(0)  # get only values and flatten
+                # get their numerical values from the dictionary
+                quals_values = [float(self.tstoid[self.id2e[int(x)]]) + 1 if int(x) != 0 else 0 for x in quals_indices]
+                vals = torch.tensor(quals_values, dtype=torch.float, device=self.device).view(stk_inp.shape[1], quals.shape[1] // 2).transpose(1, 0)
+                timed_vals = self.time_encoder(vals)  # shape: quals/2, bs, emb_dim
+                time_embeddings[3::2, :, :] = timed_vals
+                # zeroify padding indices
+                time_embeddings = time_embeddings * (1 - mask.int()).transpose(1, 0).unsqueeze(2)
+                stk_inp = stk_inp + pos_embeddings + time_embeddings
+            else:
+                stk_inp = stk_inp + pos_embeddings
+
+        # stk_inp = self.layer_norm(stk_inp)
+        # stk_inp = self.hidden_drop2(stk_inp)
+        x = self.encoder(stk_inp, src_key_padding_mask=mask)[2] # to get the object position
+
+        # x = x.transpose(1, 0).reshape(-1, self.flat_sz)
+        x = self.fc(x)
+        # x = self.hidden_drop2(x)
+        # x = self.bn2(x)
+        # x = F.relu(x)
+
+        x = torch.mm(x, all_ent.transpose(1, 0))
+        # x += self.bias.expand_as(x)
+
+        score = torch.sigmoid(x)
+        return score
+
 
 class CompGCN_ConvPar(CompQGCNEncoder):
     model_name = 'CompGCN_ConvPar_Statement'

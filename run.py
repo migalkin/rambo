@@ -27,7 +27,7 @@ from evaluation import EvaluationBench, EvaluationBenchArity, \
 from evaluation import acc, mrr, mr, hits_at
 from models import TransE, ConvKB, KBGat, CompGCNConvE, CompGCNDistMult, CompGCNTransE, CompGCNTransEStatements, \
     CompGCNDistMultStatement, CompGCNConvEStatement, CompGCN_ConvKB, CompGCN_ConvKB_Statement
-from models_statements import CompGCN_Transformer, CompGCN_ConvPar
+from models_statements import CompGCN_Transformer, CompGCN_ConvPar, CompGCN_ObjectMask_Transformer
 from corruption import Corruption
 from sampler import SimpleSampler, NeighbourhoodSampler, MultiClassSampler
 from loops import training_loop, training_loop_neighborhood, training_loop_gcn
@@ -316,9 +316,15 @@ if __name__ == "__main__":
                     e2id = data['e2id']
                     id2e = {v:k for k,v in e2id.items()}
                     tstoid = data['r2id'][1]
-                    model = CompGCN_Transformer(train_data_gcn, config, (id2e, tstoid))
+                    if 'objectmask' in config['MODEL_NAME']:
+                        model = CompGCN_ObjectMask_Transformer(train_data_gcn, config, (id2e, tstoid))
+                    else:
+                        model = CompGCN_Transformer(train_data_gcn, config, (id2e, tstoid))
                 else:
-                    model = CompGCN_Transformer(train_data_gcn, config)
+                    if 'objectmask' in config['MODEL_NAME']:
+                        model = CompGCN_ObjectMask_Transformer(train_data_gcn, config)
+                    else:
+                        model = CompGCN_Transformer(train_data_gcn, config)
             else:
                 print("Transformer decoder is for qual decoder only (so far)")
                 raise NotImplementedError
