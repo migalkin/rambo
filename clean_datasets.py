@@ -284,7 +284,7 @@ def load_tkbc(name: str) -> Dict:
     print(f"Found {len(timestamps)} timestamps")
 
     return {"train": train, "valid": val, "test": test, "n_entities": num_entities,
-            "n_relations": num_relations, 'e2id': total_ents, 'r2id': rels}
+            "n_relations": num_relations, 'e2id': total_ents, 'r2id': (rels, timestamps)}
 
 
 def load_yago15k_quals():
@@ -322,6 +322,7 @@ def load_yago15k_quals():
     total_rels = ['__na__'] + sorted(list(rels))
     entoid = {x: i for (i, x) in enumerate(total_ents)}
     reltoid = {x: i for (i, x) in enumerate(total_rels)}
+    tstoid = {str(x): (x-1) for (i,x) in enumerate(sorted([int(k) for k in list(timestamps.keys())]))}
 
     num_entities = len(entoid)
     num_relations = len(reltoid)
@@ -349,7 +350,7 @@ def load_yago15k_quals():
     print(f"Found {len(timestamps)} timestamps")
 
     return {"train": train, "valid": val, "test": test, "n_entities": num_entities,
-            "n_relations": num_relations, 'e2id':total_ents, 'r2id': total_rels}
+            "n_relations": num_relations, 'e2id':entoid, 'r2id': (total_rels, tstoid)}
 
 
 if __name__ == "__main__":

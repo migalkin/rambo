@@ -131,7 +131,8 @@ COMPGCNARGS = {
     'T_LAYERS': 2,
     'T_N_HEADS': 4,
     'T_HIDDEN': 512,
-    'POSITIONAL': True
+    'POSITIONAL': True,
+    'TIME': False
 }
 
 DEFAULT_CONFIG['KBGATARGS'] = KBGATARGS
@@ -311,7 +312,13 @@ if __name__ == "__main__":
                 model = CompGCN_ConvKB(train_data_gcn, config)
         elif config['MODEL_NAME'].lower().endswith('transformer'):
             if config['SAMPLER_W_QUALIFIERS']:
-                model = CompGCN_Transformer(train_data_gcn, config)
+                if config['COMPGCNARGS']['TIME']:
+                    e2id = data['e2id']
+                    id2e = {v:k for k,v in e2id.items()}
+                    tstoid = data['r2id'][1]
+                    model = CompGCN_Transformer(train_data_gcn, config, (id2e, tstoid))
+                else:
+                    model = CompGCN_Transformer(train_data_gcn, config)
             else:
                 print("Transformer decoder is for qual decoder only (so far)")
                 raise NotImplementedError
