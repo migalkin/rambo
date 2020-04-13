@@ -214,7 +214,7 @@ class CompGCN_ObjectMask_Transformer(CompQGCNEncoder):
 
         # bs*emb_dim , ......, bs*6*emb_dim
         object_mask = self.object_mask_emb.repeat(sub.shape[0], 1)
-        ins = torch.zeros((sub.shape), dtype=torch.bool)
+        ins = torch.zeros((sub.shape), dtype=torch.bool, device=self.device)
         mask = torch.cat((mask[:, :2], ins.unsqueeze(1), mask[:, 2:]), axis=1)
 
         stk_inp = self.concat(sub_emb, rel_emb, object_mask, qual_rel_emb, qual_obj_emb)
