@@ -168,7 +168,7 @@ class CompGCN_ObjectMask_Transformer(CompQGCNEncoder):
 
         encoder_layers = TransformerEncoderLayer(self.d_model, self.num_heads, self.num_hidden, config['COMPGCNARGS']['HID_DROP2'])
         self.encoder = TransformerEncoder(encoder_layers, config['COMPGCNARGS']['T_LAYERS'])
-        self.position_embeddings = nn.Embedding(config['MAX_QPAIRS'] - 1, self.d_model)
+        self.position_embeddings = nn.Embedding(config['MAX_QPAIRS'], self.d_model)
         if self.time:
             self.time_encoder = TimeEncode(self.d_model)
             self.id2e = id2e[0]
