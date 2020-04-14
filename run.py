@@ -132,7 +132,8 @@ COMPGCNARGS = {
     'T_N_HEADS': 4,
     'T_HIDDEN': 512,
     'POSITIONAL': True,
-    'TIME': False
+    'TIME': False,
+    'POOLING': 'concat'
 }
 
 DEFAULT_CONFIG['KBGATARGS'] = KBGATARGS

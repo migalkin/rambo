@@ -1625,6 +1625,7 @@ class CompGCN_ConvKB_Statement(CompQGCNEncoder):
         self.entity_embedding_norm_type: int = 2
         self.l_p_norm_entities = config['NORM_FOR_NORMALIZATION_OF_ENTITIES']
         self.scoring_fct_norm = config['SCORING_FUNCTION_NORM']
+        self.pooling = config['COMPGCNARGS']['POOLING']
 
         self.bn0 = torch.nn.BatchNorm2d(1)
         self.bn1 = torch.nn.BatchNorm2d(self.n_filters)

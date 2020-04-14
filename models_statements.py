@@ -46,6 +46,7 @@ class CompGCN_Transformer(CompQGCNEncoder):
         self.d_model = config['EMBEDDING_DIM']
         self.positional = config['COMPGCNARGS']['POSITIONAL']
         self.time = config['COMPGCNARGS']['TIME']  # treat qual values as numbers and pass them through the t_enc
+        self.pooling = config['COMPGCNARGS']['POOLING']  # min / avg / concat
 
         self.hidden_drop = torch.nn.Dropout(self.hid_drop)
         self.hidden_drop2 = torch.nn.Dropout(self.hid_drop2)
@@ -60,8 +61,11 @@ class CompGCN_Transformer(CompQGCNEncoder):
             self.tstoid = id2e[1]
         self.layer_norm = torch.nn.LayerNorm(self.emb_dim)
 
-        self.flat_sz = self.emb_dim * (config['MAX_QPAIRS'] - 1)
-        self.fc = torch.nn.Linear(self.flat_sz, self.emb_dim)
+        if self.pooling == "concat":
+            self.flat_sz = self.emb_dim * (config['MAX_QPAIRS'] - 1)
+            self.fc = torch.nn.Linear(self.flat_sz, self.emb_dim)
+        else:
+            self.fc = torch.nn.Linear(self.emb_dim, self.emb_dim)
         # self._initialize()
 
     def concat(self, e1_embed, rel_embed, qual_rel_embed, qual_obj_embed):
@@ -130,7 +134,14 @@ class CompGCN_Transformer(CompQGCNEncoder):
         # stk_inp = self.layer_norm(stk_inp)
         # stk_inp = self.hidden_drop2(stk_inp)
         x = self.encoder(stk_inp, src_key_padding_mask=mask)
-        x = x.transpose(1, 0).reshape(-1, self.flat_sz)
+
+        if self.pooling == 'concat':
+            x = x.transpose(1, 0).reshape(-1, self.flat_sz)
+        elif self.pooling == "avg":
+            x = torch.mean(x, dim=0)
+        elif self.pooling == "min":
+            x, _ = torch.min(x, dim=0)
+
         x = self.fc(x)
         # x = self.hidden_drop2(x)
         # x = self.bn2(x)
