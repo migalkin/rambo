@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from typing import Dict
-from models import CompQGCNEncoder
+from gnn_encoder import CompQGCNEncoder
 
 
 class TimeEncode(torch.nn.Module):

@@ -354,4 +354,4 @@ def load_yago15k_quals():
 
 
 if __name__ == "__main__":
-    count_stats(load_clean_wd15k("wd15k", "statements", maxlen=43))
+    count_stats(load_clean_jf17k_statements(subtype="statements"))
