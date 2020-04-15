@@ -1,8 +1,9 @@
 import torch
 
-from utils_gcn import get_param, MessagePassing, ccorr, rotate, scatter_add
+from utils_gcn import get_param, MessagePassing, ccorr, rotate
 from utils_mytorch import compute_mask
 from utils import masked_softmax
+from torch_scatter import scatter_add
 
 class CompQGCNConvLayer(MessagePassing):
     """ The important stuff. """
@@ -377,12 +378,12 @@ class CompQGCNConvLayer(MessagePassing):
         :param num_edges: num_edges to return the appropriate tensor
         :return: [1, N_EDGES]
         """
-        output = torch.zeros((num_edges, qual_embeddings.shape[1]), dtype=torch.float).to(self.device)
+        #output = torch.zeros((num_edges, qual_embeddings.shape[1]), dtype=torch.float).to(self.device)
         # unq, unq_inv = torch.unique(qual_index, return_inverse=True)
         # np.add.at(out[:2, :], unq_inv, quals[:2, :])
         #ind = torch.LongTensor(qual_index)
-        output.index_add_(dim=0, index=qual_index, source=qual_embeddings)  # TODO check this magic carefully
-
+        #output.index_add_(dim=0, index=qual_index, source=qual_embeddings)  # TODO check this magic carefully
+        output = scatter_add(qual_embeddings, qual_index, dim=0, dim_size=num_edges)
         # output = np.zeros((num_edges, qual_embeddings.shape[1]))
         # ind = qual_index.detach().cpu().numpy()
         # np.add.at(output, ind, qual_embeddings.detach().cpu().numpy())
