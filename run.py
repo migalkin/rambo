@@ -25,8 +25,9 @@ from utils_mytorch import FancyDict, parse_args, BadParameters, mt_save_dir
 from evaluation import EvaluationBench, EvaluationBenchArity, \
     EvaluationBenchGNNMultiClass, evaluate_pointwise
 from evaluation import acc, mrr, mr, hits_at
-from models import TransE, ConvKB, KBGat, CompGCNConvE, CompGCNDistMult, CompGCNTransE, CompGCNTransEStatements, \
-    CompGCNDistMultStatement, CompGCNConvEStatement, CompGCN_ConvKB, CompGCN_ConvKB_Statement
+from models import TransE, ConvKB, KBGat, CompGCNConvE, CompGCNDistMult, CompGCNTransE, \
+    CompGCNTransEStatements, CompGCNDistMultStatement, CompGCNConvEStatement, CompGCN_ConvKB, \
+    CompGCN_ConvKB_Statement, CompGCN_ConvKB_Hinge_Statement
 from models_statements import CompGCN_Transformer, CompGCN_ConvPar, CompGCN_ObjectMask_Transformer
 from corruption import Corruption
 from sampler import SimpleSampler, NeighbourhoodSampler, MultiClassSampler
@@ -335,6 +336,16 @@ if __name__ == "__main__":
             else:
                 print("ConvPar decoder is for qual decoder only (so far)")
                 raise NotImplementedError
+        elif config['MODEL_NAME'].lower().endswith('hinge'):
+            if config['SAMPLER_W_QUALIFIERS']:
+                print(
+                    f"ConvKB will use {(config['MAX_QPAIRS']-1, config['COMPGCNARGS']['KERNEL_SZ'])} kernel. Otherwize change KERNEL_SZ param. Standard is 1")
+                model = CompGCN_ConvKB_Hinge_Statement(train_data_gcn, config)
+            else:
+                raise NotImplementedError("Have to implement CompGCN-ConvKB-Hinge model for non statements.")
+                print(
+                    f"ConvKB will use {(2, config['COMPGCNARGS']['KERNEL_SZ'])} kernel. Otherwize change KERNEL_SZ param. Standard is 1")
+                model = CompGCN_ConvKB_Hinge_Statement(train_data_gcn, config)
         else:
             raise BadParameters(f"Unknown Model Name {config['MODEL_NAME']}")
     else:
