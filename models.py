@@ -1118,8 +1118,6 @@ class CompGCN_ConvKB_Statement(CompQGCNEncoder):
         return score
 
 
-
-
 class CompGCN_ConvKB_Hinge_Statement(CompQGCNEncoder):
     model_name = 'CompGCN_ConvKB_Hinge_Statement'
 
@@ -1145,13 +1143,11 @@ class CompGCN_ConvKB_Hinge_Statement(CompQGCNEncoder):
         self.hidden_drop = torch.nn.Dropout(self.hid_drop)
         self.hidden_drop2 = torch.nn.Dropout(self.hid_drop2)
         self.feature_drop = torch.nn.Dropout(self.feat_drop)
+        self.m_convs = nn.ModuleList()
+
         self.m_convs = [torch.nn.Conv2d(1, out_channels=self.n_filters,
                                        kernel_size=(4, self.kernel_sz), stride=1,
                                        padding=0, bias=config['COMPGCNARGS']['BIAS']) for i in range((config['MAX_QPAIRS']-3)//2)]
-
-
-
-
 
         self.flat_sz = self.n_filters * (self.emb_dim - self.kernel_sz + 1)
         self.fc = torch.nn.Linear(self.flat_sz, self.emb_dim)
