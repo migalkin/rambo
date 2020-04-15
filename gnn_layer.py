@@ -256,7 +256,9 @@ class CompQGCNConvLayer(MessagePassing):
             if self.p['COMPGCNARGS']['QUAL_REPR'] == "full":
                 qualifier_emb = torch.mm(qualifier_emb.sum(axis=0), self.w_q)  # [N_EDGES / 2 x EMB_DIM]
             elif self.p['COMPGCNARGS']['QUAL_REPR'] == "sparse":
-                qualifier_emb = torch.mm(self.coalesce_quals(qualifier_emb, qual_index, rel_part_emb.shape[0]), self.w_q)
+                qualifier_emb = torch.einsum('ij,jk -> ik',
+                                             self.coalesce_quals(qualifier_emb, qual_index, rel_part_emb.shape[0]),
+                                             self.w_q)
 
             return alpha * rel_part_emb + (1 - alpha) * qualifier_emb      # [N_EDGES / 2 x EMB_DIM]
         elif self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'concat':
@@ -336,7 +338,7 @@ class CompQGCNConvLayer(MessagePassing):
             rel_emb = torch.index_select(rel_embed, 0, edge_type)
 
         xj_rel = self.rel_transform(x_j, rel_emb)
-        out = torch.mm(xj_rel, weight)
+        out = torch.einsum('ij,jk->ik', xj_rel, weight)
 
         return out if edge_norm is None else out * edge_norm.view(-1, 1)
 
