@@ -7,6 +7,7 @@ from typing import Callable
 from utils_mytorch import *
 
 from corruption import Corruption
+#®from apex import amp
 
 
 # Make a loop fn
@@ -589,9 +590,14 @@ def training_loop_gcn(epochs: int,
                 per_epoch_loss.append(loss.item())
 
                 loss.backward()
+
+                # with amp.scale_loss(loss, opt) as scaled_loss:
+                #     scaled_loss.backward()
                 if grad_clipping:
                     torch.nn.utils.clip_grad_norm_(train_fn.parameters(), 1.0)
                 opt.step()
+
+
 
                 # summary_val = val_testbench()
 

@@ -1135,6 +1135,8 @@ class CompGCN_ConvKB_Hinge_Statement(CompQGCNEncoder):
         self.l_p_norm_entities = config['NORM_FOR_NORMALIZATION_OF_ENTITIES']
         self.scoring_fct_norm = config['SCORING_FUNCTION_NORM']
         self.pooling = config['COMPGCNARGS']['POOLING']
+        self.multi_convs = config['COMPGCNARGS']['MULTI_CONVS']
+        self.pooling = config['COMPGCNARGS']['POOLING']
 
         self.bn0 = torch.nn.BatchNorm2d(1)
         self.bn1 = torch.nn.BatchNorm2d(self.n_filters)
@@ -1143,15 +1145,23 @@ class CompGCN_ConvKB_Hinge_Statement(CompQGCNEncoder):
         self.hidden_drop = torch.nn.Dropout(self.hid_drop)
         self.hidden_drop2 = torch.nn.Dropout(self.hid_drop2)
         self.feature_drop = torch.nn.Dropout(self.feat_drop)
-        self.m_convs = nn.ModuleList()
 
-        for i in range((config['MAX_QPAIRS']-3)//2):
-            self.m_convs.append(torch.nn.Conv2d(1, out_channels=self.n_filters,
-                        kernel_size=(4, self.kernel_sz), stride=1,
-                        padding=0, bias=config['COMPGCNARGS']['BIAS']))
+
+        if self.multi_convs:
+            self.m_convs = nn.ModuleList()
+            for i in range((config['MAX_QPAIRS']-3)//2):
+                self.m_convs.append(torch.nn.Conv2d(1, out_channels=self.n_filters,
+                            kernel_size=(4, self.kernel_sz), stride=1,
+                            padding=0, bias=config['COMPGCNARGS']['BIAS']))
+        else:
+            self.m_convs = torch.nn.Conv2d(1, out_channels=self.n_filters,
+                            kernel_size=(4, self.kernel_sz), stride=1,
+                            padding=0, bias=config['COMPGCNARGS']['BIAS'])
+
 
         self.flat_sz = self.n_filters * (self.emb_dim - self.kernel_sz + 1)
         self.fc = torch.nn.Linear(self.flat_sz, self.emb_dim)
+        print("in pooling flatten is not supported and would correspond to average")
         # self._initialize()
 
     def concat(self, e1_embed, rel_embed, qual_rel_embed, qual_obj_embed):
@@ -1170,12 +1180,21 @@ class CompGCN_ConvKB_Hinge_Statement(CompQGCNEncoder):
 
         iterator_size = stk_inp.shape[1]
         x = [self.bn0(stk_inp[:,i,:,:].unsqueeze(1)) for i in range(iterator_size)]
-        x = [self.m_convs[i](x[i]) for i in range(iterator_size)]
+
+        if self.multi_convs:
+            x = [self.m_convs[i](x[i]) for i in range(iterator_size)]
+        else:
+            x = [self.m_convs(x[i]) for i in range(iterator_size)]
+
         x = [self.bn1(x[i]) for i in range(iterator_size)]
 
         x = [x[i].squeeze().view(x[i].shape[0],-1) for i in range(iterator_size)]
         x = torch.stack(x,1)
-        x = torch.min(x,1)[0]
+
+        if self.pooling == 'min':
+            x = torch.min(x,1)[0]
+        else:
+            x = torch.mean(x,1)
         # x = F.relu(x)
         x = self.feature_drop(x)
         x = x.view(-1, self.flat_sz)

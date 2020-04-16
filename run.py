@@ -13,6 +13,9 @@ import wandb
 import sys
 import collections
 
+
+#from apex import amp
+
 # MyTorch imports
 #from mytorch.utils.goodies import *
 
@@ -128,6 +131,9 @@ COMPGCNARGS = {
     'K_W': 5,  # def 10
     'K_H': 10,  # def 20,
 
+    # For Hinge Only
+    'MULTI_CONVS': False,
+
     # For Transformer
     'T_LAYERS': 2,
     'T_N_HEADS': 4,
@@ -135,6 +141,7 @@ COMPGCNARGS = {
     'POSITIONAL': True,
     'TIME': False,
     'POOLING': 'concat'
+
 }
 
 DEFAULT_CONFIG['KBGATARGS'] = KBGATARGS
@@ -366,6 +373,8 @@ if __name__ == "__main__":
         print("Unexpected optimizer, we support `sgd` or `adam` at the moment")
         raise NotImplementedError
 
+
+    #model, optimizer = amp.initialize(model, optimizer,opt_level='O1')
     if config['WANDB']:
         wandb.init(project="wikidata-embeddings")
         for k, v in config.items():
