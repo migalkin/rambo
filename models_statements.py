@@ -16,7 +16,8 @@ class TimeEncode(torch.nn.Module):
 
         time_dim = expand_dim
         self.factor = factor
-        self.basis_freq = torch.nn.Parameter((torch.from_numpy(1 / 10 ** np.linspace(0, 9, time_dim))).float())
+        # reduced linspace from (0,9) to (0,3) as in our temporal datasets min-max variance is of 3rd order of magnitude
+        self.basis_freq = torch.nn.Parameter((torch.from_numpy(1 / 10 ** np.linspace(0, 3, time_dim))).float())
         self.phase = torch.nn.Parameter(torch.zeros(time_dim).float())
 
     def forward(self, ts):
