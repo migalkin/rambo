@@ -241,8 +241,10 @@ def mt_save(savedir: Path, message: str = None, message_fname: str = None, torch
             traceback.print_exc()
 
     for data in json_stuff or ():
+        # Filter out: only things belonging to specific types should be saved.
+        saving_data = {k: v for k, v in data.obj.items() if type(v) in [str, int, float, np.int, np.float, np.long, bool]}
         try:
-            json.dump(data.obj, open(savedir / data.fname, 'w+'))
+            json.dump(saving_data, open(savedir / data.fname, 'w+'))
         except:
             traceback.print_exc()
 
