@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 from utils_gcn import get_param, MessagePassing, ccorr, rotate
 from utils_mytorch import compute_mask
@@ -150,8 +151,58 @@ class CompQGCNConvLayer(MessagePassing):
                     TODO: Slice the new quals matrix by batches but keep an eye on qual_index 
                         -> all from the main batch have to be there
                     """
-                    print("Subbatching in the sparse mode is still in TODO")
-                    raise NotImplementedError
+                    # print("Subbatching in the sparse mode is still in TODO")
+                    # raise NotImplementedError
+                    loop_res = self.propagate('add', self.loop_index, x=x, edge_type=self.loop_type,
+                                              rel_embed=rel_embed, edge_norm=None, mode='loop',
+                                              ent_embed=None, qualifier_ent=None, qualifier_rel=None,
+                                              qual_index=None)
+                    i = 0
+                    in_res = torch.zeros((x.shape[0], self.out_channels)).to(self.device)
+                    out_res = torch.zeros((x.shape[0], self.out_channels)).to(self.device)
+                    num_batches = (num_edges // self.p['COMPGCNARGS']['SUBBATCH']) + 1
+                    while i <= num_edges:
+                        # sample edges
+                        edges = torch.tensor(np.sort(np.random.choice(num_edges, self.p['COMPGCNARGS']['SUBBATCH'])), device=self.device)
+                        subbatch_in_index = self.in_index[:, edges]
+                        subbatch_in_type = self.in_type[edges]
+                        subbatch_in_norm = self.in_norm[edges]
+                        # find if there are any quals
+                        # the following magic has been ripped off from SO https://stackoverflow.com/questions/56176439/pytorch-argsort-ordered-with-duplicate-elements-in-the-tensor
+                        subbatch_in_quals = torch.nonzero(self.quals_index_in[..., None] == edges)[:, 0]
+                        subbatch_in_q_index = torch.nonzero(self.quals_index_in[..., None] == edges)[:, 1]
+                        subbatch_in_q_ents = self.in_index_qual_ent[subbatch_in_quals]
+                        subbatch_in_q_rels = self.in_index_qual_rel[subbatch_in_quals]
+                        # temp1 = in_edges_with_quals[..., None] == edges
+                        # subbatch_in_q_index = torch.nonzero(temp1.t())[:, 0]
+
+                        subbatch_out_index = self.out_index[:, edges]
+                        subbatch_out_type = self.out_type[edges]
+                        subbatch_out_norm = self.out_norm[edges]
+                        # find if there are any quals
+                        # out_edges_with_quals = torch.tensor(np.sort(np.intersect1d(self.quals_index_out, edges)), device=self.device)
+                        subbatch_out_quals = torch.nonzero(self.quals_index_out[..., None] == edges)[:, 0]
+                        subbatch_out_q_index = torch.nonzero(self.quals_index_out[..., None] == edges)[:, 1]
+                        subbatch_out_q_ents = self.out_index_qual_ent[subbatch_out_quals]
+                        subbatch_out_q_rels = self.out_index_qual_rel[subbatch_out_quals]
+                        # temp2 = out_edges_with_quals[:, None] == edges
+                        # subbatch_out_q_index = torch.nonzero(temp2.t())[:, 0]
+                        # propagate
+                        in_res += self.propagate('add', subbatch_in_index, x=x, edge_type=subbatch_in_type,
+                                                rel_embed=rel_embed, edge_norm=subbatch_in_norm, mode='in',
+                                                ent_embed=x, qualifier_ent=subbatch_in_q_ents,
+                                                qualifier_rel=subbatch_in_q_rels,
+                                                qual_index=subbatch_in_q_index)
+                        out_res += self.propagate('add', subbatch_out_index, x=x, edge_type=subbatch_out_type,
+                                                 rel_embed=rel_embed, edge_norm=subbatch_out_norm, mode='out',
+                                                 ent_embed=x, qualifier_ent=subbatch_out_q_ents,
+                                                 qualifier_rel=subbatch_out_q_rels,
+                                                 qual_index=subbatch_out_q_index)
+                        # iterate
+                        i += self.p['COMPGCNARGS']['SUBBATCH']
+                    # avg in and out
+                    in_res = torch.div(in_res, float(num_batches))
+                    out_res = torch.div(out_res, float(num_batches))
 
         else:
             if self.p['COMPGCNARGS']['SUBBATCH'] == 0:
