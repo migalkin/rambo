@@ -169,8 +169,11 @@ class CompQGCNConvLayer(MessagePassing):
                         subbatch_in_norm = self.in_norm[edges]
                         # find if there are any quals
                         # the following magic has been ripped off from SO https://stackoverflow.com/questions/56176439/pytorch-argsort-ordered-with-duplicate-elements-in-the-tensor
-                        subbatch_in_quals = torch.nonzero(self.quals_index_in[..., None] == edges)[:, 0]
-                        subbatch_in_q_index = torch.nonzero(self.quals_index_in[..., None] == edges)[:, 1]
+                        # subbatch_in_quals = torch.nonzero(self.quals_index_in[..., None] == edges)[:, 0]
+                        # subbatch_in_q_index = torch.nonzero(self.quals_index_in[..., None] == edges)[:, 1]
+                        # the above yields CUDA OOM, worse solution below
+                        subbatch_q_index = torch.tensor([i for i, x in enumerate(edges) if x in self.quals_index_in for k in range(self.quals_index_in.eq(x).sum().item())], device=self.device)
+                        subbatch_in_quals = torch.tensor([i for i, x in enumerate(self.quals_index_in) if x in edges], device=self.device)
                         subbatch_in_q_ents = self.in_index_qual_ent[subbatch_in_quals]
                         subbatch_in_q_rels = self.in_index_qual_rel[subbatch_in_quals]
                         # temp1 = in_edges_with_quals[..., None] == edges
@@ -181,10 +184,10 @@ class CompQGCNConvLayer(MessagePassing):
                         subbatch_out_norm = self.out_norm[edges]
                         # find if there are any quals
                         # out_edges_with_quals = torch.tensor(np.sort(np.intersect1d(self.quals_index_out, edges)), device=self.device)
-                        subbatch_out_quals = torch.nonzero(self.quals_index_out[..., None] == edges)[:, 0]
-                        subbatch_out_q_index = torch.nonzero(self.quals_index_out[..., None] == edges)[:, 1]
-                        subbatch_out_q_ents = self.out_index_qual_ent[subbatch_out_quals]
-                        subbatch_out_q_rels = self.out_index_qual_rel[subbatch_out_quals]
+                        # subbatch_out_quals = torch.nonzero(self.quals_index_out[..., None] == edges)[:, 0]
+                        # subbatch_out_q_index = torch.nonzero(self.quals_index_out[..., None] == edges)[:, 1]
+                        subbatch_out_q_ents = self.out_index_qual_ent[subbatch_in_quals]
+                        subbatch_out_q_rels = self.out_index_qual_rel[subbatch_in_quals]
                         # temp2 = out_edges_with_quals[:, None] == edges
                         # subbatch_out_q_index = torch.nonzero(temp2.t())[:, 0]
                         # propagate
@@ -192,12 +195,12 @@ class CompQGCNConvLayer(MessagePassing):
                                                 rel_embed=rel_embed, edge_norm=subbatch_in_norm, mode='in',
                                                 ent_embed=x, qualifier_ent=subbatch_in_q_ents,
                                                 qualifier_rel=subbatch_in_q_rels,
-                                                qual_index=subbatch_in_q_index)
+                                                qual_index=subbatch_q_index)
                         out_res += self.propagate('add', subbatch_out_index, x=x, edge_type=subbatch_out_type,
                                                  rel_embed=rel_embed, edge_norm=subbatch_out_norm, mode='out',
                                                  ent_embed=x, qualifier_ent=subbatch_out_q_ents,
                                                  qualifier_rel=subbatch_out_q_rels,
-                                                 qual_index=subbatch_out_q_index)
+                                                 qual_index=subbatch_q_index)
                         # iterate
                         i += self.p['COMPGCNARGS']['SUBBATCH']
                     # avg in and out
