@@ -175,7 +175,8 @@ class CompQGCNConvLayer(MessagePassing):
                         # subbatch_in_q_index = torch.nonzero(self.quals_index_in[..., None] == edges)[:, 1]
                         # the above yields CUDA OOM, worse solution below
                         subbatch_q_index = torch.tensor([k for k, x in enumerate(edges) if x in self.quals_index_in for _ in range(self.quals_index_in.eq(x).sum().item())], device=self.device)
-                        subbatch_in_quals = torch.tensor([k for k, x in enumerate(self.quals_index_in) if x in edges], device=self.device)
+                        #subbatch_in_quals = torch.tensor([k for k, x in enumerate(self.quals_index_in) if x in edges], device=self.device)
+                        subbatch_in_quals = torch.tensor([l.item() for k in edges if k in self.quals_index_in for l in torch.nonzero(self.quals_index_in == k)])
                         subbatch_in_q_ents = self.in_index_qual_ent[subbatch_in_quals]
                         subbatch_in_q_rels = self.in_index_qual_rel[subbatch_in_quals]
                         # temp1 = in_edges_with_quals[..., None] == edges
