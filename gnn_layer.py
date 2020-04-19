@@ -7,6 +7,12 @@ from utils_mytorch import compute_mask
 from utils import masked_softmax
 from torch_scatter import scatter_add
 
+
+try:
+    from pykeops.torch import LazyTensor
+except ImportError:
+    LazyTensor = None
+
 class CompQGCNConvLayer(MessagePassing):
     """ The important stuff. """
 
@@ -39,6 +45,8 @@ class CompQGCNConvLayer(MessagePassing):
         self.bn = torch.nn.BatchNorm1d(out_channels)
 
         if self.p['COMPGCNARGS']['ATTENTION']:
+            assert self.p['COMPGCNARGS']['GCN_DIM'] == self.p['EMBEDDING_DIM'], "Current attn implementation requires those tto be identical"
+            assert self.p['EMBEDDING_DIM'] % self.p['COMPGCNARGS']['ATTENTION_HEADS'] == 0, "should be divisible"
             self.heads = self.p['COMPGCNARGS']['ATTENTION_HEADS']
             self.attn_dim = self.out_channels // self.heads
             self.negative_slope = self.p['COMPGCNARGS']['ATTENTION_SLOPE']
@@ -411,7 +419,12 @@ class CompQGCNConvLayer(MessagePassing):
         if self.p['COMPGCNARGS']['ATTENTION'] and mode != 'loop':
             out = out.view(-1, self.heads, self.attn_dim)
             x_i = x_i.view(-1, self.heads, self.attn_dim)
-            alpha = (torch.cat([x_i, out], dim=-1) * self.att).sum(dim=-1)
+            # if LazyTensor is not None:
+            #     ns, att = LazyTensor(torch.cat([x_i, out], dim=-1).unsqueeze(-3)), LazyTensor(self.att.unsqueeze(-3))
+            #     alpha = (ns * att).sum(dim=-1, backend='auto').sum(dim=1).squeeze(-1)
+            # else:
+            #     alpha = (torch.einsum('bij,kij -> bi', [torch.cat([x_i, out], dim=-1), self.att]))
+            alpha = torch.einsum('bij,kij -> bi', [torch.cat([x_i, out], dim=-1), self.att])
             alpha = F.leaky_relu(alpha, self.negative_slope)
             alpha = softmax(alpha, source_index, ent_embed.size(0))
             alpha = F.dropout(alpha, p=self.attn_drop)
