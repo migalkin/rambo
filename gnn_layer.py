@@ -1,7 +1,8 @@
 import torch
 import numpy as np
+import torch.nn.functional as F
 
-from utils_gcn import get_param, MessagePassing, ccorr, rotate
+from utils_gcn import get_param, MessagePassing, ccorr, rotate, softmax
 from utils_mytorch import compute_mask
 from utils import masked_softmax
 from torch_scatter import scatter_add
@@ -36,6 +37,13 @@ class CompQGCNConvLayer(MessagePassing):
 
         self.drop = torch.nn.Dropout(self.p['COMPGCNARGS']['GCN_DROP'])
         self.bn = torch.nn.BatchNorm1d(out_channels)
+
+        if self.p['COMPGCNARGS']['ATTENTION']:
+            self.heads = self.p['COMPGCNARGS']['ATTENTION_HEADS']
+            self.attn_dim = self.out_channels // self.heads
+            self.negative_slope = self.p['COMPGCNARGS']['ATTENTION_SLOPE']
+            self.attn_drop = self.p['COMPGCNARGS']['ATTENTION_DROP']
+            self.att = get_param((1, self.heads, 2 * self.attn_dim))
 
         if self.p['COMPGCNARGS']['BIAS']: self.register_parameter('bias', Parameter(
             torch.zeros(out_channels)))
@@ -134,18 +142,20 @@ class CompQGCNConvLayer(MessagePassing):
                                             rel_embed=rel_embed, edge_norm=self.in_norm, mode='in',
                                             ent_embed=x, qualifier_ent=self.in_index_qual_ent,
                                             qualifier_rel=self.in_index_qual_rel,
-                                            qual_index=self.quals_index_in)
+                                            qual_index=self.quals_index_in,
+                                            source_index=self.in_index[0])
 
                     loop_res = self.propagate('add', self.loop_index, x=x, edge_type=self.loop_type,
                                               rel_embed=rel_embed, edge_norm=None, mode='loop',
                                               ent_embed=None, qualifier_ent=None, qualifier_rel=None,
-                                              qual_index=None)
+                                              qual_index=None, source_index=None)
 
                     out_res = self.propagate('add', self.out_index, x=x, edge_type=self.out_type,
                                              rel_embed=rel_embed, edge_norm=self.out_norm, mode='out',
                                              ent_embed=x, qualifier_ent=self.out_index_qual_ent,
                                              qualifier_rel=self.out_index_qual_rel,
-                                             qual_index=self.quals_index_out)
+                                             qual_index=self.quals_index_out,
+                                             source_index=self.out_index[0])
                 else:
                     """
                     TODO: Slice the new quals matrix by batches but keep an eye on qual_index 
@@ -377,8 +387,8 @@ class CompQGCNConvLayer(MessagePassing):
                                         qual_index=qual_index)
 
     # return qualifier_emb
-    def message(self, x_j, edge_type, rel_embed, edge_norm, mode, ent_embed=None, qualifier_ent=None,
-                qualifier_rel=None, qual_index=None):
+    def message(self, x_j, x_i, edge_type, rel_embed, edge_norm, mode, ent_embed=None, qualifier_ent=None,
+                qualifier_rel=None, qual_index=None, source_index=None):
         weight = getattr(self, 'w_{}'.format(mode))
 
         if self.p['STATEMENT_LEN'] != 3:
@@ -398,9 +408,21 @@ class CompQGCNConvLayer(MessagePassing):
         xj_rel = self.rel_transform(x_j, rel_emb)
         out = torch.einsum('ij,jk->ik', xj_rel, weight)
 
-        return out if edge_norm is None else out * edge_norm.view(-1, 1)
+        if self.p['COMPGCNARGS']['ATTENTION'] and mode != 'loop':
+            out = out.view(-1, self.heads, self.attn_dim)
+            x_i = x_i.view(-1, self.heads, self.attn_dim)
+            alpha = (torch.cat([x_i, out], dim=-1) * self.att).sum(dim=-1)
+            alpha = F.leaky_relu(alpha, self.negative_slope)
+            alpha = softmax(alpha, source_index, ent_embed.size(0))
+            alpha = F.dropout(alpha, p=self.attn_drop)
+            return out * alpha.view(-1, self.heads, 1)
+        else:
+            return out if edge_norm is None else out * edge_norm.view(-1, 1)
 
-    def update(self, aggr_out):
+    def update(self, aggr_out, mode):
+        if self.p['COMPGCNARGS']['ATTENTION'] and mode != 'loop':
+            aggr_out = aggr_out.view(-1, self.heads * self.attn_dim)
+
         return aggr_out
 
     @staticmethod

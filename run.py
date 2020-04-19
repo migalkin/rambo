@@ -119,6 +119,10 @@ COMPGCNARGS = {
     'QUAL_OPN': 'corr',
     'SUBBATCH': 0,
     'QUAL_REPR': 'sparse',  # sparse or full
+    'ATTENTION': False,
+    'ATTENTION_HEADS': 4,
+    'ATTENTION_SLOPE': 0.2,
+    'ATTENTION_DROP': 0.1,
 
     # For TransE
     'GAMMA': 40.0,
