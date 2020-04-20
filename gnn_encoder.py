@@ -60,9 +60,11 @@ class CompQGCNEncoder(CompGCNBase):
             num_timestamps = len(timestamps)
             time_values = torch.tensor([v+1 for k,v in timestamps.items()]).view(-1, 1)
             time_enc = TimeEncode(self.emb_dim)
-            self.init_embed = torch.cat(
-                [get_param((self.num_ent-num_timestamps, self.emb_dim)),
-                 time_enc(time_values).squeeze(1)], dim=0)
+            self.init_embed = get_param((self.num_ent, self.emb_dim))
+            self.init_embed.data[-num_timestamps:] = time_enc(time_values).squeeze(1)
+            # self.init_embed = torch.cat(
+            #     [get_param((self.num_ent-num_timestamps, self.emb_dim)),
+            #      time_enc(time_values).squeeze(1)], dim=0)
             self.init_embed.data[0] = 0
 
 
