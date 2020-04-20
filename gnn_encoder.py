@@ -33,7 +33,7 @@ class CompGCNBase(torch.nn.Module):
 
 
 class CompQGCNEncoder(CompGCNBase):
-    def __init__(self, graph_repr: Dict[str, np.ndarray], config: dict):
+    def __init__(self, graph_repr: Dict[str, np.ndarray], config: dict, timestamps: dict = None):
         super().__init__(config)
 
         self.device = config['DEVICE']
@@ -53,11 +53,17 @@ class CompQGCNEncoder(CompGCNBase):
         """
          Replaced param init to nn.Embedding init with a padding idx
         """
-        self.init_embed = get_param((self.num_ent, self.emb_dim))
-        self.init_embed.data[0] = 0
-        # self.init_embed = nn.Embedding(self.num_ent, self.emb_dim, padding_idx=0)
-        # xavier_normal_(self.init_embed.weight)
-        # self.init_embed.weight.data[0] = 0
+        if timestamps is None:
+            self.init_embed = get_param((self.num_ent, self.emb_dim))
+            self.init_embed.data[0] = 0
+        else:
+            num_timestamps = len(timestamps)
+            time_values = torch.tensor([v+1 for k,v in timestamps.items()], device=self.device).view(-1, 1)
+            time_enc = TimeEncode(self.emb_dim)
+            self.init_embed = torch.cat(
+                [get_param((self.num_ent-num_timestamps, self.emb_dim)),
+                 time_enc(time_values).squeeze(1)], dim=0)
+            self.init_embed.data[0] = 0
 
 
         # What about bases?
@@ -181,3 +187,29 @@ class CompQGCNEncoder(CompGCNBase):
                 return sub_emb, rel_emb, qual_obj_emb, qual_rel_emb, x, mask
 
         return sub_emb, rel_emb, x
+
+
+class TimeEncode(torch.nn.Module):
+    """
+     The implementation is similar to https://openreview.net/pdf?id=rJeW1yHYwH
+    """
+    def __init__(self, expand_dim, factor=5):
+        super(TimeEncode, self).__init__()
+
+        time_dim = expand_dim
+        self.factor = factor
+        # reduced linspace from (0,9) to (0,3) as in our temporal datasets min-max variance is of 3rd order of magnitude
+        self.basis_freq = torch.nn.Parameter((torch.from_numpy(1 / 10 ** np.linspace(0, 3, time_dim))).float())
+        self.phase = torch.nn.Parameter(torch.zeros(time_dim).float())
+
+    def forward(self, ts):
+        # ts: [N, L]
+        batch_size = ts.size(0)
+        seq_len = ts.size(1)
+
+        ts = ts.view(batch_size, seq_len, 1)  # [N, L, 1]
+        map_ts = ts * self.basis_freq.view(1, 1, -1)  # [N, L, time_dim]
+        map_ts += self.phase.view(1, 1, -1)
+        harmonic = torch.cos(map_ts)
+
+        return harmonic

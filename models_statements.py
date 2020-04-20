@@ -36,7 +36,10 @@ class CompGCN_Transformer(CompQGCNEncoder):
     model_name = 'CompGCN_Transformer_Statement'
 
     def __init__(self, kg_graph_repr: Dict[str, np.ndarray], config: dict, id2e: tuple = None):
-        super(self.__class__, self).__init__(kg_graph_repr, config)
+        if id2e is not None:
+            super(self.__class__, self).__init__(kg_graph_repr, config, id2e[1])
+        else:
+            super(self.__class__, self).__init__(kg_graph_repr, config)
 
         self.model_name = 'CompGCN_Transformer_Statement'
         self.hid_drop2 = config['COMPGCNARGS']['HID_DROP2']
