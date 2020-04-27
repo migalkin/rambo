@@ -30,7 +30,7 @@ from evaluation import EvaluationBench, EvaluationBenchArity, \
 from evaluation import acc, mrr, mr, hits_at
 from models import TransE, ConvKB, KBGat, CompGCNConvE, CompGCNDistMult, CompGCNTransE, \
     CompGCNTransEStatements, CompGCNDistMultStatement, CompGCNConvEStatement, CompGCN_ConvKB, \
-    CompGCN_ConvKB_Statement, CompGCN_ConvKB_Hinge_Statement
+    CompGCN_ConvKB_Statement, CompGCN_ConvKB_Hinge_Statement, CompGCN_Transformer_Triples
 from models_statements import CompGCN_Transformer, CompGCN_ConvPar, CompGCN_ObjectMask_Transformer
 from corruption import Corruption
 from sampler import SimpleSampler, NeighbourhoodSampler, MultiClassSampler
@@ -339,8 +339,9 @@ if __name__ == "__main__":
                     else:
                         model = CompGCN_Transformer(train_data_gcn, config)
             else:
-                print("Transformer decoder is for qual decoder only (so far)")
-                raise NotImplementedError
+                model = CompGCN_Transformer_Triples(train_data_gcn, config)
+                # print("Transformer decoder is for qual decoder only (so far)")
+                # raise NotImplementedError
         elif config['MODEL_NAME'].lower().endswith('convpar'):
             if config['SAMPLER_W_QUALIFIERS']:
                 model = CompGCN_ConvPar(train_data_gcn, config)
