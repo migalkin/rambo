@@ -30,7 +30,7 @@ from evaluation import EvaluationBench, EvaluationBenchArity, \
 from evaluation import acc, mrr, mr, hits_at
 from models import TransE, ConvKB, KBGat, CompGCNConvE, CompGCNDistMult, CompGCNTransE, \
     CompGCNTransEStatements, CompGCNDistMultStatement, CompGCNConvEStatement, CompGCN_ConvKB, \
-    CompGCN_ConvKB_Statement, CompGCN_ConvKB_Hinge_Statement, CompGCN_Transformer_Triples
+    CompGCN_ConvKB_Statement, CompGCN_ConvKB_Hinge_Statement, CompGCN_Transformer_Triples, ConvE_Triple_Baseline
 from models_statements import CompGCN_Transformer, CompGCN_ConvPar, CompGCN_ObjectMask_Transformer
 from corruption import Corruption
 from sampler import SimpleSampler, NeighbourhoodSampler, MultiClassSampler
@@ -309,6 +309,8 @@ if __name__ == "__main__":
                 model = CompGCNConvEStatement(train_data_gcn, config)
             else:
                 model = CompGCNConvE(train_data_gcn, config)
+        elif config['MODEL_NAME'].lower().endswith('conve_baseline'):
+            model = ConvE_Triple_Baseline(config)
         elif config['MODEL_NAME'].lower().endswith('distmult'):
             if config['SAMPLER_W_QUALIFIERS']:
                 model = CompGCNDistMultStatement(train_data_gcn, config)
