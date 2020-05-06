@@ -1360,3 +1360,84 @@ class ConvE_Triple_Baseline(CompGCNBase):
         score = torch.sigmoid(x)
         return score
 
+
+class Transformer_Baseline(CompGCNBase):
+    def __init__(self, config: dict):
+        super().__init__(config)
+
+        #self.emb_dim = config['EMBEDDING_DIM']
+        self.entities = get_param((self.num_ent, self.emb_dim))
+        self.relations = get_param((2 * self.num_rel, self.emb_dim))
+
+        self.model_name = 'CompGCN_Transformer_Statement'
+        self.hid_drop2 = config['COMPGCNARGS']['HID_DROP2']
+        self.feat_drop = config['COMPGCNARGS']['FEAT_DROP']
+        self.num_transformer_layers = config['COMPGCNARGS']['T_LAYERS']
+        self.num_heads = config['COMPGCNARGS']['T_N_HEADS']
+        self.num_hidden = config['COMPGCNARGS']['T_HIDDEN']
+        self.d_model = config['EMBEDDING_DIM']
+        self.positional = config['COMPGCNARGS']['POSITIONAL']
+        self.time = config['COMPGCNARGS']['TIME']  # treat qual values as numbers and pass them through the t_enc
+        self.pooling = config['COMPGCNARGS']['POOLING']  # min / avg / concat
+        self.device = config['DEVICE']
+
+        self.hidden_drop = torch.nn.Dropout(self.hid_drop)
+        self.hidden_drop2 = torch.nn.Dropout(self.hid_drop2)
+        self.feature_drop = torch.nn.Dropout(self.feat_drop)
+
+        encoder_layers = TransformerEncoderLayer(self.d_model, self.num_heads, self.num_hidden,
+                                                 config['COMPGCNARGS']['HID_DROP2'])
+        self.encoder = TransformerEncoder(encoder_layers, config['COMPGCNARGS']['T_LAYERS'])
+        self.position_embeddings = nn.Embedding(config['MAX_QPAIRS'] - 1, self.d_model)
+        self.layer_norm = torch.nn.LayerNorm(self.emb_dim)
+
+        if self.pooling == "concat":
+            self.flat_sz = self.emb_dim * (config['MAX_QPAIRS'] - 1)
+            self.fc = torch.nn.Linear(self.flat_sz, self.emb_dim)
+        else:
+            self.fc = torch.nn.Linear(self.emb_dim, self.emb_dim)
+
+    def concat(self, e1_embed, rel_embed):
+        e1_embed = e1_embed.view(-1, 1, self.emb_dim)
+        rel_embed = rel_embed.view(-1, 1, self.emb_dim)
+        stack_inp = torch.cat([e1_embed, rel_embed], 1).transpose(1, 0)  # [2, bs, emb_dim]
+        return stack_inp
+
+    def forward(self, sub, rel):
+
+        sub_emb = torch.index_select(self.entities, 0, sub)
+        rel_emb = torch.index_select(self.relations, 0, rel)
+
+        # bs*emb_dim , ......, bs*6*emb_dim
+
+        stk_inp = self.concat(sub_emb, rel_emb)
+        mask = torch.zeros((sub.shape[0], 2)).bool().to(self.device)
+        #mask = mask[:, :2]
+
+        if self.positional:
+            positions = torch.arange(stk_inp.shape[0], dtype=torch.long, device=self.device).repeat(stk_inp.shape[1], 1)
+            pos_embeddings = self.position_embeddings(positions).transpose(1, 0)
+            stk_inp = stk_inp + pos_embeddings
+
+        # stk_inp = self.layer_norm(stk_inp)
+        # stk_inp = self.hidden_drop2(stk_inp)
+        x = self.encoder(stk_inp, src_key_padding_mask=mask)
+
+        if self.pooling == 'concat':
+            x = x.transpose(1, 0).reshape(-1, self.flat_sz)
+        elif self.pooling == "avg":
+            x = torch.mean(x, dim=0)
+        elif self.pooling == "min":
+            x, _ = torch.min(x, dim=0)
+
+        x = self.fc(x)
+        # x = self.hidden_drop2(x)
+        # x = self.bn2(x)
+        # x = F.relu(x)
+
+        x = torch.mm(x, self.entities.transpose(1, 0))
+        # x += self.bias.expand_as(x)
+
+        score = torch.sigmoid(x)
+        return score
+

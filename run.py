@@ -30,7 +30,8 @@ from evaluation import EvaluationBench, EvaluationBenchArity, \
 from evaluation import acc, mrr, mr, hits_at
 from models import TransE, ConvKB, KBGat, CompGCNConvE, CompGCNDistMult, CompGCNTransE, \
     CompGCNTransEStatements, CompGCNDistMultStatement, CompGCNConvEStatement, CompGCN_ConvKB, \
-    CompGCN_ConvKB_Statement, CompGCN_ConvKB_Hinge_Statement, CompGCN_Transformer_Triples, ConvE_Triple_Baseline
+    CompGCN_ConvKB_Statement, CompGCN_ConvKB_Hinge_Statement, CompGCN_Transformer_Triples, ConvE_Triple_Baseline, \
+    Transformer_Baseline
 from models_statements import CompGCN_Transformer, CompGCN_ConvPar, CompGCN_ObjectMask_Transformer, \
     CompGCN_Transformer_TripleBaseline
 from corruption import Corruption
@@ -312,6 +313,8 @@ if __name__ == "__main__":
                 model = CompGCNConvE(train_data_gcn, config)
         elif config['MODEL_NAME'].lower().endswith('conve_baseline'):
             model = ConvE_Triple_Baseline(config)
+        elif config['MODEL_NAME'].lower().endswith('trans_baseline'):
+            model = Transformer_Baseline(config)
         elif config['MODEL_NAME'].lower().endswith('triple_baseline'):
             assert config['SAMPLER_W_QUALIFIERS'] is True, "only works for qual-aware encoder"
             model = CompGCN_Transformer_TripleBaseline(train_data_gcn, config)
