@@ -33,7 +33,7 @@ class CompQGCNConvLayer(MessagePassing):
         self.w_rel = get_param((in_channels, out_channels))  # (100,200)
 
         if self.p['STATEMENT_LEN'] != 3:
-            if self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'sum' or self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'attn':
+            if self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'sum' or self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'mul':
                 self.w_q = get_param((in_channels, in_channels))  # new for quals setup
             elif self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'concat':
                 self.w_q = get_param((2 * in_channels, in_channels))  # need 2x size due to the concat operation
@@ -346,14 +346,13 @@ class CompQGCNConvLayer(MessagePassing):
             agg_rel = torch.cat((rel_part_emb, qualifier_emb), dim=1)  # [N_EDGES / 2 x 2 * EMB_DIM]
             return torch.mm(agg_rel, self.w_q)                         # [N_EDGES / 2 x EMB_DIM]
 
-        elif self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'attn':
+        elif self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'mul':
             if self.p['COMPGCNARGS']['QUAL_REPR'] == "full":
                 qualifier_emb = torch.mm(qualifier_emb.sum(axis=0), self.w_q)  # [N_EDGES / 2 x EMB_DIM]
             elif self.p['COMPGCNARGS']['QUAL_REPR'] == "sparse":
-                qualifier_emb = torch.mm(self.coalesce_quals(qualifier_emb, qual_index, rel_part_emb.shape[0]), self.w_q)
+                qualifier_emb = torch.mm(self.coalesce_quals(qualifier_emb, qual_index, rel_part_emb.shape[0], fill=1), self.w_q)
 
-            aggregated = self._self_attention_2d(rel_part_emb, qualifier_emb)
-            return aggregated
+            return rel_part_emb * qualifier_emb
         else:
             raise NotImplementedError
 
@@ -464,13 +463,14 @@ class CompQGCNConvLayer(MessagePassing):
         score = masked_softmax(score, mask)
         return torch.sum(torch.mm(score, ct), dim=1)
 
-    def coalesce_quals(self, qual_embeddings, qual_index, num_edges):
+    def coalesce_quals(self, qual_embeddings, qual_index, num_edges, fill=0):
         """
         # TODO
         :param qual_embeddings: shape of [1, N_QUALS]
         :param qual_index: shape of [1, N_QUALS] which states which quals belong to which main relation from the index,
             that is, all qual_embeddings that have the same index have to be summed up
         :param num_edges: num_edges to return the appropriate tensor
+        :param fill: fill value for the output matrix - should be 0 for sum/concat and 1 for mul qual aggregation strat
         :return: [1, N_EDGES]
         """
         #output = torch.zeros((num_edges, qual_embeddings.shape[1]), dtype=torch.float).to(self.device)
@@ -478,7 +478,7 @@ class CompQGCNConvLayer(MessagePassing):
         # np.add.at(out[:2, :], unq_inv, quals[:2, :])
         #ind = torch.LongTensor(qual_index)
         #output.index_add_(dim=0, index=qual_index, source=qual_embeddings)  # TODO check this magic carefully
-        output = scatter_add(qual_embeddings, qual_index, dim=0, dim_size=num_edges)
+        output = scatter_add(qual_embeddings, qual_index, dim=0, dim_size=num_edges, fill_value=fill)
         # output = np.zeros((num_edges, qual_embeddings.shape[1]))
         # ind = qual_index.detach().cpu().numpy()
         # np.add.at(output, ind, qual_embeddings.detach().cpu().numpy())
