@@ -146,6 +146,7 @@ COMPGCNARGS = {
     'T_N_HEADS': 4,
     'T_HIDDEN': 512,
     'POSITIONAL': True,
+    'POS_OPTION': 'default',
     'TIME': False,
     'POOLING': 'concat'
 
