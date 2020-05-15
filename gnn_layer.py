@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from utils_gcn import get_param, MessagePassing, ccorr, rotate, softmax
 from utils_mytorch import compute_mask
 from utils import masked_softmax
-from torch_scatter import scatter_add
+from torch_scatter import scatter_add, scatter_mean
 
 
 try:
@@ -478,7 +478,10 @@ class CompQGCNConvLayer(MessagePassing):
         # np.add.at(out[:2, :], unq_inv, quals[:2, :])
         #ind = torch.LongTensor(qual_index)
         #output.index_add_(dim=0, index=qual_index, source=qual_embeddings)  # TODO check this magic carefully
-        output = scatter_add(qual_embeddings, qual_index, dim=0, dim_size=num_edges, fill_value=fill)
+        if self.p['COMPGCNARGS']['QUAL_N'] == 'sum':
+            output = scatter_add(qual_embeddings, qual_index, dim=0, dim_size=num_edges, fill_value=fill)
+        elif self.p['COMPGCNARGS']['QUAL_N'] == 'mean':
+            output = scatter_mean(qual_embeddings, qual_index, dim=0, dim_size=num_edges, fill_value=fill)
         # output = np.zeros((num_edges, qual_embeddings.shape[1]))
         # ind = qual_index.detach().cpu().numpy()
         # np.add.at(output, ind, qual_embeddings.detach().cpu().numpy())

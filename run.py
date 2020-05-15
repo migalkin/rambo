@@ -117,8 +117,9 @@ COMPGCNARGS = {
     'BIAS': False,
     'OPN': 'corr',
     'TRIPLE_QUAL_WEIGHT': 0.8,
-    'QUAL_AGGREGATE': 'sum',
+    'QUAL_AGGREGATE': 'sum',  # or concat or mul
     'QUAL_OPN': 'corr',
+    'QUAL_N': 'sum',  # or mean
     'SUBBATCH': 0,
     'QUAL_REPR': 'sparse',  # sparse or full
     'ATTENTION': False,
