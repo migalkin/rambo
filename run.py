@@ -33,7 +33,7 @@ from models import TransE, ConvKB, KBGat, CompGCNConvE, CompGCNDistMult, CompGCN
     CompGCN_ConvKB_Statement, CompGCN_ConvKB_Hinge_Statement, CompGCN_Transformer_Triples, ConvE_Triple_Baseline, \
     Transformer_Baseline
 from models_statements import CompGCN_Transformer, CompGCN_ConvPar, CompGCN_ObjectMask_Transformer, \
-    CompGCN_Transformer_TripleBaseline
+    CompGCN_Transformer_TripleBaseline, Transformer_Statements
 from corruption import Corruption
 from sampler import SimpleSampler, NeighbourhoodSampler, MultiClassSampler
 from loops import training_loop, training_loop_neighborhood, training_loop_gcn
@@ -320,6 +320,11 @@ if __name__ == "__main__":
         elif config['MODEL_NAME'].lower().endswith('triple_baseline'):
             assert config['SAMPLER_W_QUALIFIERS'] is True, "only works for qual-aware encoder"
             model = CompGCN_Transformer_TripleBaseline(train_data_gcn, config)
+        elif config['MODEL_NAME'].lower().endswith('stats_baseline'):
+            if config['SAMPLER_W_QUALIFIERS']:
+                model = Transformer_Statements(config)
+            else:
+                raise NotImplementedError
         elif config['MODEL_NAME'].lower().endswith('distmult'):
             if config['SAMPLER_W_QUALIFIERS']:
                 model = CompGCNDistMultStatement(train_data_gcn, config)

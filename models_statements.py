@@ -4,7 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from typing import Dict
-from gnn_encoder import CompQGCNEncoder
+from gnn_encoder import CompQGCNEncoder, CompGCNBase
+from utils_gcn import get_param
 
 
 class TimeEncode(torch.nn.Module):
@@ -494,3 +495,101 @@ class CompGCN_Transformer_TripleBaseline(CompQGCNEncoder):
 
         score = torch.sigmoid(x)
         return score
+
+
+class Transformer_Statements(CompGCNBase):
+    """Baseline for Transformer decoder only model w/o starE encoder"""
+
+    def __init__(self, config: dict):
+        super().__init__(config)
+
+        #self.emb_dim = config['EMBEDDING_DIM']
+        self.entities = get_param((self.num_ent, self.emb_dim))
+        self.relations = get_param((2 * self.num_rel, self.emb_dim))
+
+        self.model_name = 'CompGCN_Transformer_Statement'
+        self.hid_drop2 = config['COMPGCNARGS']['HID_DROP2']
+        self.feat_drop = config['COMPGCNARGS']['FEAT_DROP']
+        self.num_transformer_layers = config['COMPGCNARGS']['T_LAYERS']
+        self.num_heads = config['COMPGCNARGS']['T_N_HEADS']
+        self.num_hidden = config['COMPGCNARGS']['T_HIDDEN']
+        self.d_model = config['EMBEDDING_DIM']
+        self.positional = config['COMPGCNARGS']['POSITIONAL']
+
+        self.pooling = config['COMPGCNARGS']['POOLING']  # min / avg / concat
+        self.device = config['DEVICE']
+
+        self.hidden_drop = torch.nn.Dropout(self.hid_drop)
+        self.hidden_drop2 = torch.nn.Dropout(self.hid_drop2)
+        self.feature_drop = torch.nn.Dropout(self.feat_drop)
+
+        encoder_layers = TransformerEncoderLayer(self.d_model, self.num_heads, self.num_hidden,
+                                                 config['COMPGCNARGS']['HID_DROP2'])
+        self.encoder = TransformerEncoder(encoder_layers, config['COMPGCNARGS']['T_LAYERS'])
+        self.position_embeddings = nn.Embedding(config['MAX_QPAIRS'] - 1, self.d_model)
+        self.layer_norm = torch.nn.LayerNorm(self.emb_dim)
+
+        if self.pooling == "concat":
+            self.flat_sz = self.emb_dim * (config['MAX_QPAIRS'] - 1)
+            self.fc = torch.nn.Linear(self.flat_sz, self.emb_dim)
+        else:
+            self.fc = torch.nn.Linear(self.emb_dim, self.emb_dim)
+
+    def concat(self, e1_embed, rel_embed, qual_rel_embed, qual_obj_embed):
+        e1_embed = e1_embed.view(-1, 1, self.emb_dim)
+        rel_embed = rel_embed.view(-1, 1, self.emb_dim)
+
+        quals = torch.cat((qual_rel_embed, qual_obj_embed), 2).view(-1, 2 * qual_rel_embed.shape[1],
+                                                                    qual_rel_embed.shape[2])
+        stack_inp = torch.cat([e1_embed, rel_embed, quals], 1).transpose(1, 0)  # [2 + num_qual_pairs, bs, emb_dim]
+        return stack_inp
+
+    def forward(self, sub, rel, quals):
+
+        sub_emb = torch.index_select(self.entities, 0, sub)
+        rel_emb = torch.index_select(self.relations, 0, rel)
+
+        quals_ents = quals[:, 1::2].view(1, -1).squeeze(0)
+        quals_rels = quals[:, 0::2].view(1, -1).squeeze(0)
+        qual_obj_emb = torch.index_select(self.entities, 0, quals_ents)
+        qual_rel_emb = torch.index_select(self.relations, 0, quals_rels)
+        qual_obj_emb = qual_obj_emb.view(sub_emb.shape[0], -1, sub_emb.shape[1])
+        qual_rel_emb = qual_rel_emb.view(rel_emb.shape[0], -1, rel_emb.shape[1])
+
+        # quals_rel_emb = torch.index_select(self.relations, 0, quals[:, :2])
+        # quals_obj_emb = torch.index_select(self.entities, 0, quals[:, 1::2])
+
+        # so we first initialize with False
+        mask = torch.zeros((sub.shape[0], quals.shape[1] + 2)).bool().to(self.device)
+        # and put True where qual entities and relations are actually padding index 0
+        mask[:, 2:] = quals == 0
+
+        stk_inp = self.concat(sub_emb, rel_emb, qual_rel_emb, qual_obj_emb)
+
+        if self.positional:
+            positions = torch.arange(stk_inp.shape[0], dtype=torch.long, device=self.device).repeat(stk_inp.shape[1], 1)
+            pos_embeddings = self.position_embeddings(positions).transpose(1, 0)
+            stk_inp = stk_inp + pos_embeddings
+
+        # stk_inp = self.layer_norm(stk_inp)
+        # stk_inp = self.hidden_drop2(stk_inp)
+        x = self.encoder(stk_inp, src_key_padding_mask=mask)
+
+        if self.pooling == 'concat':
+            x = x.transpose(1, 0).reshape(-1, self.flat_sz)
+        elif self.pooling == "avg":
+            x = torch.mean(x, dim=0)
+        elif self.pooling == "min":
+            x, _ = torch.min(x, dim=0)
+
+        x = self.fc(x)
+        # x = self.hidden_drop2(x)
+        # x = self.bn2(x)
+        # x = F.relu(x)
+
+        x = torch.mm(x, self.entities.transpose(1, 0))
+        # x += self.bias.expand_as(x)
+
+        score = torch.sigmoid(x)
+        return score
+
