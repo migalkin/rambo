@@ -7,7 +7,7 @@ from utils_gcn import get_param, MessagePassing, ccorr, rotate, softmax, xavier_
 from utils_mytorch import compute_mask
 from utils import masked_softmax
 from torch_scatter import scatter_add, scatter_mean
-from torch_geometric.utils import add_self_loops, remove_self_loops
+#from torch_geometric.utils import add_self_loops, remove_self_loops
 from gnn_encoder import CompGCNBase
 from typing import Dict
 
@@ -83,7 +83,7 @@ class EdgeGATConv(MessagePassing):
             self.quals_index_in, self.quals_index_out = quals[2, :num_quals], quals[2, num_quals:]
 
         # Self edges between all the nodes
-        self.loop_index = torch.stack([torch.arange(num_ent), torch.arange(num_ent)]).to(self.device)
+        self.loop_index = torch.stack([torch.arange(num_ent), torch.arange(num_ent)])   #.to(self.device)
         self.loop_type = torch.full((num_ent,), rel_embed.size(0) - 1,
                                     dtype=torch.long).to(self.device)  # if rel meb is 500, the index of the self emb is
 
@@ -91,7 +91,8 @@ class EdgeGATConv(MessagePassing):
 
         # if size is None and torch.is_tensor(x):
         #     edge_index, _ = remove_self_loops(edge_index)
-        edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
+        #edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
+        edge_index = torch.cat([edge_index, self.loop_index], dim=-1)
         edge_type = torch.cat([edge_type, self.loop_type], dim=0)
 
         if torch.is_tensor(x):
