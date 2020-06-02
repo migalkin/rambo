@@ -12,6 +12,7 @@ import random
 import wandb
 import sys
 import collections
+from torchsummary import summary
 
 
 #from apex import amp
@@ -33,7 +34,7 @@ from models import TransE, ConvKB, KBGat, CompGCNConvE, CompGCNDistMult, CompGCN
     CompGCN_ConvKB_Statement, CompGCN_ConvKB_Hinge_Statement, CompGCN_Transformer_Triples, ConvE_Triple_Baseline, \
     Transformer_Baseline
 from models_statements import CompGCN_Transformer, CompGCN_ConvPar, CompGCN_ObjectMask_Transformer, \
-    CompGCN_Transformer_TripleBaseline, Transformer_Statements
+    CompGCN_Transformer_TripleBaseline, Transformer_Statements, RGAT_Transformer
 from corruption import Corruption
 from sampler import SimpleSampler, NeighbourhoodSampler, MultiClassSampler
 from loops import training_loop, training_loop_neighborhood, training_loop_gcn
@@ -358,6 +359,12 @@ if __name__ == "__main__":
                 model = CompGCN_Transformer_Triples(train_data_gcn, config)
                 # print("Transformer decoder is for qual decoder only (so far)")
                 # raise NotImplementedError
+        elif config['MODEL_NAME'].lower().endswith('rgat'):
+            if config['SAMPLER_W_QUALIFIERS']:
+                model = RGAT_Transformer(train_data_gcn, config)
+            else:
+                print("ConvPar decoder is for qual decoder only (so far)")
+                raise NotImplementedError
         elif config['MODEL_NAME'].lower().endswith('convpar'):
             if config['SAMPLER_W_QUALIFIERS']:
                 model = CompGCN_ConvPar(train_data_gcn, config)
@@ -385,6 +392,8 @@ if __name__ == "__main__":
     #     model = nn.DataParallel(model)
 
     model.to(config['DEVICE'])
+    #summary(model, input_size=[(1,1), (1,1), (1,12)])
+    print("Model params ", sum([param.nelement() for param in model.parameters()]))
 
     if config['OPTIMIZER'] == 'sgd':
         optimizer = torch.optim.SGD(model.parameters(), lr=config['LEARNING_RATE'])
