@@ -83,7 +83,7 @@ class EdgeGATConv(MessagePassing):
             self.quals_index_in, self.quals_index_out = quals[2, :num_quals], quals[2, num_quals:]
 
         # Self edges between all the nodes
-        self.loop_index = torch.stack([torch.arange(num_ent), torch.arange(num_ent)])   #.to(self.device)
+        self.loop_index = torch.stack([torch.arange(num_ent), torch.arange(num_ent)]).to(self.device)
         self.loop_type = torch.full((num_ent,), rel_embed.size(0) - 1,
                                     dtype=torch.long).to(self.device)  # if rel meb is 500, the index of the self emb is
 
