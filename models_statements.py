@@ -501,8 +501,12 @@ class CompGCN_Transformer_TripleBaseline(CompQGCNEncoder):
 class Transformer_Statements(CompGCNBase):
     """Baseline for Transformer decoder only model w/o starE encoder"""
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, id2e: tuple = None):
         super().__init__(config)
+        # if id2e is not None:
+        #     super(self.__class__, self).__init__(kg_graph_repr, config, id2e[1])
+        # else:
+        #     super(self.__class__, self).__init__(kg_graph_repr, config)
 
         #self.emb_dim = config['EMBEDDING_DIM']
         self.entities = get_param((self.num_ent, self.emb_dim))
@@ -516,7 +520,7 @@ class Transformer_Statements(CompGCNBase):
         self.num_hidden = config['COMPGCNARGS']['T_HIDDEN']
         self.d_model = config['EMBEDDING_DIM']
         self.positional = config['COMPGCNARGS']['POSITIONAL']
-
+        self.time = config['COMPGCNARGS']['TIME']  # treat qual values as numbers and pass them through the t_enc
         self.pooling = config['COMPGCNARGS']['POOLING']  # min / avg / concat
         self.device = config['DEVICE']
 
@@ -529,6 +533,11 @@ class Transformer_Statements(CompGCNBase):
         self.encoder = TransformerEncoder(encoder_layers, config['COMPGCNARGS']['T_LAYERS'])
         self.position_embeddings = nn.Embedding(config['MAX_QPAIRS'] - 1, self.d_model)
         self.layer_norm = torch.nn.LayerNorm(self.emb_dim)
+
+        if self.time:
+            self.time_encoder = TimeEncode(self.d_model)
+            self.id2e = id2e[0]
+            self.tstoid = id2e[1]
 
         if self.pooling == "concat":
             self.flat_sz = self.emb_dim * (config['MAX_QPAIRS'] - 1)
@@ -571,6 +580,21 @@ class Transformer_Statements(CompGCNBase):
             positions = torch.arange(stk_inp.shape[0], dtype=torch.long, device=self.device).repeat(stk_inp.shape[1], 1)
             pos_embeddings = self.position_embeddings(positions).transpose(1, 0)
             stk_inp = stk_inp + pos_embeddings
+            if self.time:
+                # TODO: Time Magic here, mike tested for yago and icews, but debug if you want
+                time_embeddings = torch.zeros((stk_inp.shape[0], stk_inp.shape[1], stk_inp.shape[2]), dtype=torch.float, device=self.device)
+                # get qual values which are not padding indices
+                qual_non_padded = quals * (1 - mask[:, 2:].int())
+                quals_indices = qual_non_padded[:, 1::2].reshape(1, -1).squeeze(0)  # get only values and flatten
+                # get their numerical values from the dictionary
+                quals_values = [float(self.tstoid[self.id2e[int(x)]]) + 1 if int(x) != 0 else 0 for x in quals_indices]
+                vals = torch.tensor(quals_values, dtype=torch.float, device=self.device).view(stk_inp.shape[1], quals.shape[1] // 2).transpose(1,0)
+                timed_vals = self.time_encoder(vals)  # shape: quals/2, bs, emb_dim
+                time_embeddings[3::2, :, :] = timed_vals
+                # zeroify padding indices
+                time_embeddings = time_embeddings * (1 - mask.int()).transpose(1, 0).unsqueeze(2)
+                stk_inp = stk_inp + time_embeddings
+
 
         # stk_inp = self.layer_norm(stk_inp)
         # stk_inp = self.hidden_drop2(stk_inp)

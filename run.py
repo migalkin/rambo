@@ -323,7 +323,13 @@ if __name__ == "__main__":
             model = CompGCN_Transformer_TripleBaseline(train_data_gcn, config)
         elif config['MODEL_NAME'].lower().endswith('stats_baseline'):
             if config['SAMPLER_W_QUALIFIERS']:
-                model = Transformer_Statements(config)
+                if config['COMPGCNARGS']['TIME']:
+                    e2id = data['e2id']
+                    id2e = {v:k for k,v in e2id.items()}
+                    tstoid = data['r2id'][1]
+                    model = Transformer_Statements(config, (id2e, tstoid))
+                else:
+                    model = Transformer_Statements(config)
             else:
                 raise NotImplementedError
         elif config['MODEL_NAME'].lower().endswith('distmult'):
