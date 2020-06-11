@@ -66,7 +66,7 @@ def process_dataset_entities(ds, subtype, qtype):
     qfunction = partial(get_entity_label, qtype=qtemplate)
 
     with mp.Pool() as pool:
-        all_batches = tqdm(pool.map(qfunction, entities[:5]))
+        all_batches = tqdm(pool.map(qfunction, entities))
         class_labels = {k: v for batch in all_batches for (k, v) in batch.items()}
 
     json.dump(class_labels,
