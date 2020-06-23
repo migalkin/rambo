@@ -1710,9 +1710,13 @@ def count_stats(ds):
         quals_train = len([x for x in tr if x[3] != 0])
         quals_val = len([x for x in vl if x[3] != 0])
         quals_test = len([x for x in ts if x[3] != 0])
+        max_qlen = max([np.array(x).nonzero()[0][-1]+1 for x in tr+vl])
+        distr = {k: v for k, v in collections.Counter(np.array(x).nonzero()[0][-1]+1 for x in tr+vl).items()}
         print(f"W/ quals - train: {quals_train}/{round(float(quals_train/len(tr)), 3)}")
         print(f"W/ quals - val: {quals_val}/{round(float(quals_val / len(vl)), 3)}")
         print(f"W/ quals - test: {quals_test}/{round(float(quals_test / len(ts)), 3)}")
+        print(f"Max statement len w/ qual: {max_qlen}")
+        print(distr)
     # id2e = {v:k for k,v in ds['e2id'].items()}
     # id2p = {v:k for k,v in ds['r2id'].items()}
     train_ents = set([item for x in tr for item in x[0::2]])
@@ -1791,6 +1795,33 @@ def count_stats(ds):
     print(f"Those entities and relations are used in {len(senseless_triples)} test triples")
     print("Leak triples in train+val wrt to test : ", count, "/", len(tr+vl))
 
+    count = 0
+    test_spos = set([(i[0], i[1], i[2]) for i in ts])
+    test_opss = set([(i[2], i[1], i[0]) for i in ts])
+    for i in tr + vl:
+        main_triple = (i[0], i[1], i[2])
+        rec_triple = (i[2], i[1], i[0])
+        if main_triple in test_opss:
+            count += 1
+        if rec_triple in test_spos:
+            count += 1
+    # senseless_triples = [x for x in ts if x[0] in ts_unique or x[2] in ts_unique]
+    print("Reverse triples in train+val wrt to test : ", count, "/", len(tr + vl))
+
+    count = 0
+    count_rev = 0
+    trvl_spos = set([(i[0], i[1], i[2]) for i in tr+vl])
+    for i in ts:
+        main_triple = (i[0], i[1], i[2])
+        rec_triple = (i[2], i[1], i[0])
+        if main_triple in trvl_spos:
+            count += 1
+        if rec_triple in trvl_spos:
+            count_rev += 1
+
+    print("Triples in test that share the same base as in train+val : ", count, "/", len(ts))
+    print("Triples in test that  are reverses of those in train+val : ", count_rev, "/", len(ts))
+
 
 
 
@@ -1804,7 +1835,7 @@ if __name__ == "__main__":
 
     # ds = load_clean_wikipeople_statements(maxlen=43)
     # ds = load_fb15k237()
-    ds = load_jf17k_statements()
+    ds = load_wikipeople_statements(maxlen=15)
     count_stats(ds)
 
 

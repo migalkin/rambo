@@ -5,6 +5,7 @@ import random
 import pickle
 import numpy as np
 import re
+import json
 
 from load import _get_uniques_, _pad_statements_, count_stats, remove_dups
 
@@ -353,5 +354,86 @@ def load_yago15k_quals():
             "n_relations": num_relations, 'e2id':entoid, 'r2id': (total_rels, tstoid)}
 
 
+def load_nodecl_dataset(name, subtype, task, maxlen=43) -> Dict:
+    """
+
+    :param name: dataset name wd15k/wd15k_33/wd15k_66/wd15k_qonly
+    :param subtype: triples/statements
+    :param task: so/full predict entities at sub/obj positions (for triples/statements) or all nodes incl quals
+    :param maxlen: max statement length
+    :return: train/valid/test splits for the wd15k datasets
+    """
+
+    assert name in ['wd15k', 'wd15k_qonly', 'wd15k_33', 'wd15k_66'], "Incorrect dataset"
+    assert subtype in ["triples", "statements"], "Incorrect subtype: triples/statements"
+
+
+    DIRNAME = Path(f'./data/clean/{name}/{subtype}')
+
+    with open(DIRNAME / 'nc_edges.txt', 'r') as f:
+        edges = []
+        for line in f.readlines():
+            edges.append(line.strip("\n").split(","))
+
+    with open(DIRNAME / 'nc_entities.txt', 'r') as f:
+        statement_entities = [l.strip("\n") for l in f.readlines()]
+
+    with open(DIRNAME / 'nc_rels.txt', 'r') as f:
+        statement_predicates = [l.strip("\n") for l in f.readlines()]
+
+    if subtype == "triples":
+        task = "so"
+
+    with open(DIRNAME / f'nc_train_{task}_labels.json', 'r') as f:
+        train_labels = json.load(f)
+
+    with open(DIRNAME / f'nc_val_{task}_labels.json', 'r') as f:
+        val_labels = json.load(f)
+
+    with open(DIRNAME / f'nc_test_{task}_labels.json', 'r') as f:
+        test_labels = json.load(f)
+
+
+    st_entities = ['__na__'] + statement_entities
+    st_predicates = ['__na__'] + statement_predicates
+
+    entoid = {pred: i for i, pred in enumerate(st_entities)}
+    prtoid = {pred: i for i, pred in enumerate(st_predicates)}
+
+    graph, train_mask, val_mask, test_mask = [], [], [], []
+    for st in edges:
+        id_st = []
+        for i, uri in enumerate(st):
+            id_st.append(entoid[uri] if i % 2 is 0 else prtoid[uri])
+        graph.append(id_st)
+
+    if subtype != "triples":
+        graph = _pad_statements_(graph, maxlen)
+
+    # if subtype == "triples":
+    #     graph = remove_dups(graph)
+
+    train_mask = [entoid[e] for e in train_labels]
+    val_mask = [entoid[e] for e in val_labels]
+    test_mask = [entoid[e] for e in test_labels]
+
+    all_labels = sorted(list(set([
+        label for v in list(train_labels.values())+list(val_labels.values())+list(test_labels.values()) for label in v])))
+    label2id = {l: i for i, l in enumerate(all_labels)}
+    id2label = {v: k for k, v in label2id.items()}
+
+    train_y = {entoid[k]: [label2id[vi] for vi in v] for k, v in train_labels.items()}
+    val_y = {entoid[k]: [label2id[vi] for vi in v] for k, v in val_labels.items()}
+    test_y = {entoid[k]: [label2id[vi] for vi in v] for k, v in test_labels.items()}
+
+    return {"train_mask": train_mask, "valid_mask": val_mask, "test_mask": test_mask,
+            "train_y": train_y, "val_y": val_y, "test_y": test_y,
+            "all_labels": all_labels, "label2id": label2id, "id2label": id2label,
+            "n_entities": len(st_entities), "n_relations": len(st_predicates),
+            "e2id": entoid, "r2id": prtoid, "graph": graph
+            }
+
+
 if __name__ == "__main__":
-    count_stats(load_clean_jf17k_statements(subtype="statements"))
+    #count_stats(load_clean_wd15k("wd15k","statements",43))
+    load_nodecl_dataset("wd15k_qonly", "statements", "so", 15)
