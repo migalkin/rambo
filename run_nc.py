@@ -22,7 +22,7 @@ from data_manager import DataManager
 from utils import *
 from utils_mytorch import FancyDict, parse_args, BadParameters, mt_save_dir
 from evaluation import EvaluationBench, EvaluationBenchArity, \
-    EvaluationBenchGNNMultiClass, evaluate_pointwise, compute_roc_auc
+    EvaluationBenchGNNMultiClass, evaluate_pointwise, eval_classification
 from evaluation import acc, mrr, mr, hits_at
 from models import TransE, ConvKB, KBGat, CompGCNConvE, CompGCNDistMult, CompGCNTransE, \
     CompGCNTransEStatements, CompGCNDistMultStatement, CompGCNConvEStatement, CompGCN_ConvKB, \
@@ -346,7 +346,7 @@ if __name__ == "__main__":
         "opt": optimizer,
         "train_fn": model,
         "device": config['DEVICE'],
-        "eval_fn": compute_roc_auc,
+        "eval_fn": eval_classification,
         "eval_every": config['EVAL_EVERY'],
         "log_wandb": config['WANDB'],
         "run_trn_testbench": config['RUN_TESTBENCH_ON_TRAIN'],

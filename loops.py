@@ -768,7 +768,9 @@ def training_loop_node_classification(epochs: int,
                       scheduler: Callable = None) -> (list, list, list):
     train_loss = []
     train_rocauc = []
+    train_prcauc = []
     valid_rocauc = []
+    valid_prcauc = []
     lrs = []
 
     # Epoch level
@@ -818,23 +820,28 @@ def training_loop_node_classification(epochs: int,
             with torch.no_grad():
                 train_fn.eval()
                 val_preds = train_fn(val_mask_)
-                val_rocauc = eval_fn(val_y_, val_preds)
-                valid_rocauc.append(val_rocauc)
+                val_res = eval_fn(val_y_, val_preds)
+                valid_rocauc.append(val_res["rocauc"])
+                valid_prcauc.append(val_res["prcauc"])
 
 
                 if run_trn_testbench:
                     # Also run train testbench
                     train_preds = train_fn(train_mask_)
-                    tr_rocauc = eval_fn(train_y_, train_preds)
-                    train_rocauc.append(tr_rocauc)
+                    tr_res = eval_fn(train_y_, train_preds)
+                    train_rocauc.append(tr_res["rocauc"])
+                    train_prcauc.append(tr_res["prcauc"])
 
                     # Print statement here
                     print("Epoch: %(epo)03d | Loss: %(loss).5f | Tr_rocauc: %(tr_rocauc)0.5f | "
-                          "Vl_rocauc: %(val_rocauc)0.5f | Time_trn: %(time).3f min"
+                          "Tr_prcauc: %(tr_prcauc)0.5f | Vl_rocauc: %(val_rocauc)0.5f | Vl_prcauc: %(val_prcauc)0.5f | "
+                          "Time_trn: %(time).3f min"
                           % {'epo': e,
                              'loss': float(per_epoch_loss),
-                             'tr_rocauc': float(tr_rocauc),
-                             'val_rocauc': float(val_rocauc),
+                             'tr_rocauc': float(tr_res["rocauc"]),
+                             'tr_prcauc': float(tr_res["prcauc"]),
+                             'val_rocauc': float(val_res["rocauc"]),
+                             'val_prcauc': float(val_res["prcauc"]),
                              'time': timer.interval / 60.0})
 
                     if log_wandb:
@@ -842,19 +849,21 @@ def training_loop_node_classification(epochs: int,
                         wandb.log({
                             'epoch': e,
                             'loss': float(np.mean(per_epoch_loss)),
-                            'tr_rocauc': float(tr_rocauc),
-                            'val_rocauc': float(val_rocauc)
+                            'tr_rocauc': float(tr_res["rocauc"]),
+                            'tr_prcauc': float(tr_res["prcauc"]),
+                            'val_rocauc': float(val_res["rocauc"]),
+                            'val_prcauc': float(val_res["prcauc"])
                         })
 
                 else:
                     # Don't benchmark over train
-
                     # Print Statement here
                     print("Epoch: %(epo)03d | Loss: %(loss).5f | "
-                          "Vl_rocauc: %(vl_rocauc)0.5f | time_trn: %(time).3f min"
+                          "Vl_rocauc: %(val_rocauc)0.5f | Vl_prcauc: %(val_prcauc)0.5f | time_trn: %(time).3f min"
                           % {'epo': e,
                              'loss': float(per_epoch_loss),
-                             'vl_rocauc': float(val_rocauc),
+                             'val_rocauc': float(val_res["rocauc"]),
+                             'val_prcauc': float(val_res["prcauc"]),
                              'time': timer.interval / 60.0})
 
                     if log_wandb:
@@ -862,7 +871,8 @@ def training_loop_node_classification(epochs: int,
                         wandb.log({
                             'epoch': e,
                             'loss': float(per_epoch_loss),
-                            'val_rocauc': float(val_rocauc)
+                            'val_rocauc': float(val_res["rocauc"]),
+                            'val_prcauc': float(val_res["prcauc"])
                         })
 
                 # We might wanna save the model, too

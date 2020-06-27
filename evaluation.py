@@ -6,7 +6,7 @@ import types
 from utils import *
 from utils_mytorch import Timer
 from corruption import Corruption
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, auc, precision_recall_curve
 
 
 class EvaluationBench:
@@ -537,6 +537,27 @@ def compute_roc_auc(y_true, y_pred):
             rocauc_list.append(roc_auc_score(y_true[is_labeled, i], y_pred[is_labeled, i]))
     #score = roc_auc_score(y_true, y_pred)
     return sum(rocauc_list)/len(rocauc_list) if len(rocauc_list) > 0 else 0
+
+
+def compute_prcauc(y_true, y_pred):
+    y_true = y_true.detach().cpu().numpy()
+    y_pred = y_pred.detach().cpu().numpy()
+    prcauc_list = []
+    for i in range(y_true.shape[1]):
+        if np.sum(y_true[:, i] == 1) > 0 and np.sum(y_true[:, i] == 0) > 0:
+            is_labeled = y_true[:, i] == y_true[:, i]
+            precision, recall, _ = precision_recall_curve(y_true[is_labeled, i], y_pred[is_labeled, i])
+            prcauc = auc(recall, precision)
+            prcauc_list.append(prcauc)
+
+    return sum(prcauc_list)/len(prcauc_list) if len(prcauc_list) > 0 else 0
+
+
+def eval_classification(y_true, y_pred):
+    rocauc = compute_roc_auc(y_true, y_pred)
+    prcauc = compute_prcauc(y_true, y_pred)
+
+    return {"rocauc": rocauc, "prcauc": prcauc}
 
 
 
