@@ -308,6 +308,32 @@ def create_splits(ds):
     print("Done")
 
 
+def inspect_labels_distr(ds, subtype):
+    DIRNAME = Path(f'data/clean/{ds}/{subtype}')
+
+    with open(DIRNAME / f"nc_{ds.replace('15','50')}_class_labels.json", "r") as inp:
+        labels_dict = json.load(inp)
+
+    all_labels = list(set([lab for k,v in labels_dict.items() for lab in v]))
+    from collections import defaultdict
+    import matplotlib.pyplot as plt
+
+    counts = defaultdict(int)
+
+    for k,v in labels_dict.items():
+        for label in v:
+            counts[label] += 1
+
+    counts = {k: v for k, v in sorted(counts.items(), key=lambda item: item[1], reverse=True)}
+    plt.bar(range(len(counts)), list(counts.values()), align='center')
+    #plt.xticks(range(len(counts)), list(counts.keys()))
+    plt.show()
+
+    with open("distr.txt","w") as out:
+        for k,v in counts.items():
+            out.write(f"{v}\n")
+
+
 if __name__ == "__main__":
     # process_dataset_entities("wd15k", "statements", "full")
     # process_dataset_entities("wd15k_33", "statements", "full")
@@ -329,5 +355,6 @@ if __name__ == "__main__":
     #extract_full_wd50k()
     #extract_specific("wd15k_qonly")
     #obtain_ds_labels("wd15k_qonly")
-    create_splits("wd15k_qonly")
+    #create_splits("wd15k_qonly")
+    inspect_labels_distr("wd15k","statements")
     print("DONE")

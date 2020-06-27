@@ -751,3 +751,146 @@ def training_loop_gcn(epochs: int,
            valid_acc, valid_mrr, \
            valid_hits_3, valid_hits_5, valid_hits_10
 
+
+def training_loop_node_classification(epochs: int,
+                      opt: torch.optim,
+                      train_fn: Callable,
+                      device: torch.device = torch.device('cpu'),
+                      data_fn: Callable = SimplestSampler,
+                      eval_fn: Callable = default_eval,
+                      eval_every: int = 1,
+                      log_wandb: bool = True,
+                      run_trn_testbench: bool = True,
+                      savedir: str = None,
+                      save_content: Dict[str, list] = None,
+                      qualifier_aware: bool = False,
+                      grad_clipping: bool = True,
+                      scheduler: Callable = None) -> (list, list, list):
+    train_loss = []
+    train_rocauc = []
+    valid_rocauc = []
+    lrs = []
+
+    # Epoch level
+    for e in tqdm(range(epochs)):
+
+        #per_epoch_loss = []
+        #per_epoch_tr_acc = []
+
+        # Train
+        with Timer() as timer:
+
+            # Make data
+            #trn_dl = data_fn(data['train'])
+            train_mask, train_y, val_mask, val_y = data_fn()
+            train_fn.train()
+
+            opt.zero_grad()
+
+            train_mask_ = torch.tensor(train_mask, dtype=torch.long, device=device)
+            train_y_ = torch.tensor(train_y, dtype=torch.float, device=device)
+            val_mask_ = torch.tensor(val_mask, dtype=torch.long, device=device)
+            val_y_ = torch.tensor(val_y, dtype=torch.float, device=device)
+
+
+            pred = train_fn(train_mask_)
+
+            loss = train_fn.loss(pred, train_y_)
+
+            per_epoch_loss = loss.item()
+
+            loss.backward()
+
+            # with amp.scale_loss(loss, opt) as scaled_loss:
+            #     scaled_loss.backward()
+            if grad_clipping:
+                torch.nn.utils.clip_grad_norm_(train_fn.parameters(), 1.0)
+            opt.step()
+
+                # summary_val = val_testbench()
+
+        # Log this stuff
+        print(f"[Epoch: {e} ] Loss: {per_epoch_loss}")
+        # train_acc.append(np.mean(per_epoch_tr_acc))
+        train_loss.append(per_epoch_loss)
+
+        if e % eval_every == 0 and e >= 1:
+            with torch.no_grad():
+                train_fn.eval()
+                val_preds = train_fn(val_mask_)
+                val_rocauc = eval_fn(val_y_, val_preds)
+                valid_rocauc.append(val_rocauc)
+
+
+                if run_trn_testbench:
+                    # Also run train testbench
+                    train_preds = train_fn(train_mask_)
+                    tr_rocauc = eval_fn(train_y_, train_preds)
+                    train_rocauc.append(tr_rocauc)
+
+                    # Print statement here
+                    print("Epoch: %(epo)03d | Loss: %(loss).5f | Tr_rocauc: %(tr_rocauc)0.5f | "
+                          "Vl_rocauc: %(val_rocauc)0.5f | Time_trn: %(time).3f min"
+                          % {'epo': e,
+                             'loss': float(per_epoch_loss),
+                             'tr_rocauc': float(tr_rocauc),
+                             'val_rocauc': float(val_rocauc),
+                             'time': timer.interval / 60.0})
+
+                    if log_wandb:
+                        # Wandb stuff
+                        wandb.log({
+                            'epoch': e,
+                            'loss': float(np.mean(per_epoch_loss)),
+                            'tr_rocauc': float(tr_rocauc),
+                            'val_rocauc': float(val_rocauc)
+                        })
+
+                else:
+                    # Don't benchmark over train
+
+                    # Print Statement here
+                    print("Epoch: %(epo)03d | Loss: %(loss).5f | "
+                          "Vl_rocauc: %(vl_rocauc)0.5f | time_trn: %(time).3f min"
+                          % {'epo': e,
+                             'loss': float(per_epoch_loss),
+                             'vl_rocauc': float(val_rocauc),
+                             'time': timer.interval / 60.0})
+
+                    if log_wandb:
+                        # Wandb stuff
+                        wandb.log({
+                            'epoch': e,
+                            'loss': float(per_epoch_loss),
+                            'val_rocauc': float(val_rocauc)
+                        })
+
+                # We might wanna save the model, too
+                if savedir is not None:
+                    mt_save(
+                        savedir,
+                        torch_stuff=[tosave(obj=save_content['model'].state_dict(), fname='model.torch')],
+                        pickle_stuff=[tosave(fname='traces.pkl',
+                                             obj=[train_loss, valid_rocauc])],
+                        json_stuff=[tosave(obj=save_content['config'], fname='config.json')])
+        else:
+            # No test benches this time around
+            print("Epoch: %(epo)03d | Loss: %(loss).5f |  "
+                  "Time_Train: %(time).3f min"
+                  % {'epo': e,
+                     'loss': float(per_epoch_loss),
+                     # 'tracc': float(np.mean(per_epoch_tr_acc)),
+                     'time': timer.interval / 60.0})
+
+            if log_wandb:
+                # Wandb stuff
+                wandb.log({
+                    'epoch': e,
+                    'loss': float(per_epoch_loss),
+                    # 'trn_acc': float(np.mean(per_epoch_tr_acc))
+                })
+
+        if scheduler is not None:
+            scheduler.step()
+
+    return train_loss, train_rocauc, valid_rocauc

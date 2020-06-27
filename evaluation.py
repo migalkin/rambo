@@ -6,6 +6,7 @@ import types
 from utils import *
 from utils_mytorch import Timer
 from corruption import Corruption
+from sklearn.metrics import roc_auc_score
 
 
 class EvaluationBench:
@@ -518,6 +519,25 @@ def evaluate_dataset(scores: torch.Tensor):
     recirank = 1.0 / (ranks + 1).float()
 
     return accuracy.detach().cpu().numpy(), recirank.detach().cpu().numpy()
+
+
+def compute_roc_auc(y_true, y_pred):
+    """
+
+    :param y_true: true labels, shape (n_samples, n_classes)
+    :param y_pred: predicted values, shape (n_samples, n_classes)
+    :return: roc_auc_score
+    """
+    y_true = y_true.detach().cpu().numpy()
+    y_pred = y_pred.detach().cpu().numpy()
+    rocauc_list = []
+    for i in range(y_true.shape[1]):
+        if np.sum(y_true[:, i] == 1) > 0 and np.sum(y_true[:, i] == 0) > 0:
+            is_labeled = y_true[:, i] == y_true[:, i]
+            rocauc_list.append(roc_auc_score(y_true[is_labeled, i], y_pred[is_labeled, i]))
+    #score = roc_auc_score(y_true, y_pred)
+    return sum(rocauc_list)/len(rocauc_list) if len(rocauc_list) > 0 else 0
+
 
 
 if __name__ == "__main__":
