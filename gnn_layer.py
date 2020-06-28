@@ -15,9 +15,9 @@ except ImportError:
 
 class CompQGCNConvLayer(MessagePassing):
     """ The important stuff.
-        The derives from message passing base class which automates the process
+        The layer derives from message passing base class which automates the process
         of sending messages and updating the representation. One needs to write two function namely:
-        message and update. Rest is taken care by
+        message and update. Rest is taken care by torch-geometric-like framework
      """
 
     def __init__(self, in_channels, out_channels, num_rels, act=lambda x: x,
@@ -32,8 +32,8 @@ class CompQGCNConvLayer(MessagePassing):
         self.device = None
 
         self.w_loop = get_param((in_channels, out_channels))  # (100,200) self loop parameters
-        self.w_in = get_param((in_channels, out_channels))  # (100,200) inverse relation parameters
-        self.w_out = get_param((in_channels, out_channels))  # (100,200) regular relation parameters
+        self.w_in = get_param((in_channels, out_channels))  # (100,200) regular relation parameters
+        self.w_out = get_param((in_channels, out_channels))  # (100,200) inverse relation parameters
         self.w_rel = get_param((in_channels, out_channels))  # (100,200)
 
         if self.p['STATEMENT_LEN'] != 3: # which means there are qualifiers are present
@@ -69,12 +69,12 @@ class CompQGCNConvLayer(MessagePassing):
         :param x: all entities*dim_of_entities (for jf17k -> 28646*200)
         :param edge_index: COO matrix (2 list each having nodes with index
         [1,2,3,4,5]
-        [3,4,2,4,5]
+        [3,4,2,5,4]
 
         Here node 1 and node 3 are connected with edge.
         And the type of edge can be found using edge_type.
 
-        Note that there are twice the number of nodes as each edge is also reversed.
+        Note that there are twice the number of edges as each edge is also reversed.
         )
         :param edge_type: The type of edge connecting the COO matrix
         :param rel_embed: 2 Times Total relation * emb_dim (200 in our case and 2 Times because of inverse relations)
@@ -83,9 +83,9 @@ class CompQGCNConvLayer(MessagePassing):
         :param quals: Another sparse matrix
 
         where
-            quals[0] --> rel_type
-            quals[1] --> edge_type
-            quals[2] --> index of the original COO matrix for which this qualifier exists ()
+            quals[0] --> qualifier relations type
+            quals[1] --> qualifier entity
+            quals[2] --> index of the original COO matrix that states for which edge this qualifier exists ()
 
 
         For argument sake if a knowledge graph has following statements
@@ -148,7 +148,7 @@ class CompQGCNConvLayer(MessagePassing):
             
         '''
         # Self edges between all the nodes
-        self.loop_index = torch.stack([torch.arange(num_ent), torch.arange(num_ent)]).to(self.device) # add self loop to the mix
+        self.loop_index = torch.stack([torch.arange(num_ent), torch.arange(num_ent)]).to(self.device) # add self loop edges
         self.loop_type = torch.full((num_ent,), rel_embed.size(0) - 1,
                                     dtype=torch.long).to(self.device)  # if rel meb is 500, the index of the self emb is
         # 499 .. which is just added here.
@@ -389,7 +389,7 @@ class CompQGCNConvLayer(MessagePassing):
             qualifier_emb      :   [a,b,c,d,e,f,g,......]               (here a,b,c ... are of 200 dim)
             rel_part_emb       :   [qq,ww,ee,rr,tt, .....]                      (here qq, ww, ee .. are of 200 dim)
 
-            Note that rel_part_emb ifor jf17k in_loop would be around 61k*200
+            Note that rel_part_emb for jf17k would be around 61k*200
 
             Step1 : Pass the qualifier_emb to self.coalesce_quals and multiply the returned output with a weight.
             qualifier_emb   : [aa,bb,cc,dd,ee, ...... ]                 (here aa, bb, cc are of 200 dim each)
@@ -446,15 +446,15 @@ class CompQGCNConvLayer(MessagePassing):
         """
         The update_rel_emb_with_qualifier method performs following functions:
 
-        Input is the secondary COO matrix (QE (qualifier entity), QR (qualifier relation), Endgeindex (Connection to the primary COO))
+        Input is the secondary COO matrix (QE (qualifier entity), QR (qualifier relation), edge index (Connection to the primary COO))
 
         Step1 : Embed all the input
             Step1a : Embed the qualifier entity via ent_embed (So QE shape is 33k,1 -> 33k,200)
-            Step1b : Embed the qualifier relation via rel_embed (So QE shape is 33k,1 -> 33k,200)
-            Step1c : Embed the edge_type via rel_embed (So edge_type shape is 61k,1 -> 61k,200)
+            Step1b : Embed the qualifier relation via rel_embed (So QR shape is 33k,1 -> 33k,200)
+            Step1c : Embed the main statement edge_type via rel_embed (So edge_type shape is 61k,1 -> 61k,200)
 
         Step2 : Combine qualifier entity emb and qualifier relation emb to create qualifier emb (See self.qual_transform).
-            This is generally just summing up. But can be more complicated.
+            This is generally just summing up. But can be more any pair-wise function that returns one vector for a (qe,qr) vector
 
         Step3 : Update the edge_type embedding with qualifier information. This uses scatter_add/scatter_mean.
 
@@ -465,13 +465,13 @@ class CompQGCNConvLayer(MessagePassing):
             edge_type          :   [q,w,e',r,t,y,u,i,o,p, .....]        (here q,w,e' .. are of 200 dim each)
 
         After:
-            edge_type          :   [q+a+b+d,w+c+e+g,e'+f,......]        (here each element in the list is of 200 dim)
+            edge_type          :   [q+(a+b+d),w+(c+e+g),e'+f,......]        (here each element in the list is of 200 dim)
 
 
         :param ent_embed: essentially x (28k*200 in case of Jf17k)
         :param rel_embed: essentially relation embedding matrix
 
-        For secondary COO matrix (QE, QR, Endgeindex)
+        For secondary COO matrix (QE, QR, edge index)
         :param qualifier_ent:  QE
         :param qualifier_rel: QR
         edge_type:
@@ -515,20 +515,21 @@ class CompQGCNConvLayer(MessagePassing):
         The message method performs following functions
 
         Step1 : get updated relation representation (rel_embed) [edge_type] by aggregating qualifier information (self.update_rel_emb_with_qualifier).
-        Step2 : Transform the node embedding [the first list in the COO matrix] by incorporating updated relation embedding (self.rel_transform).
-        Step3 : Multiply updated node embedding (transform) by weight
-        Step4 : Return the node embedding. Over here the node embedding [the first list in COO matrix] is representing the message which will be sent on each edge
+        Step2 : Obtain edge message by transforming the node embedding with updated relation embedding (self.rel_transform).
+        Step3 : Multiply edge embeddings (transform) by weight
+        Step4 : Return the messages. They will be sent to subjects (1st line in the edge index COO)
+        Over here the node embedding [the first list in COO matrix] is representing the message which will be sent on each edge
 
 
         More information about updating relation representation please refer to self.update_rel_emb_with_qualifier
 
-        :param x_j:
-        :param x_i:
-        :param edge_type:
-        :param rel_embed:
+        :param x_j: objects of the statements (2nd line in the COO)
+        :param x_i: subjects of the statements (1st line in the COO)
+        :param edge_type: relation types
+        :param rel_embed: embedding matrix of all relations
         :param edge_norm:
-        :param mode:
-        :param ent_embed:
+        :param mode: in (direct) / out (inverse) / loop
+        :param ent_embed: embedding matrix of all entities
         :param qualifier_ent:
         :param qualifier_rel:
         :param qual_index:
@@ -538,7 +539,6 @@ class CompQGCNConvLayer(MessagePassing):
         weight = getattr(self, 'w_{}'.format(mode))
 
         if self.p['STATEMENT_LEN'] != 3:
-            # add code here
             if mode != 'loop':
                 if self.p['COMPGCNARGS']['QUAL_REPR'] == "full":
                     rel_emb = self.update_rel_emb_with_qualifier(ent_embed, rel_embed, qualifier_ent,
@@ -579,6 +579,7 @@ class CompQGCNConvLayer(MessagePassing):
     @staticmethod
     def compute_norm(edge_index, num_ent):
         """
+        Re-normalization trick used by GCN-based architectures without attention.
 
         Yet another torch scatter functionality. See coalesce_quals for a rough idea.
 
@@ -625,7 +626,6 @@ class CompQGCNConvLayer(MessagePassing):
         After:
             edge_type          :   [a+b+d,c+e+g,f ......]        (here each element in the list is of 200 dim)
 
-        # TODO
         :param qual_embeddings: shape of [1, N_QUALS]
         :param qual_index: shape of [1, N_QUALS] which states which quals belong to which main relation from the index,
             that is, all qual_embeddings that have the same index have to be summed up
