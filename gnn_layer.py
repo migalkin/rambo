@@ -14,7 +14,11 @@ except ImportError:
     LazyTensor = None
 
 class CompQGCNConvLayer(MessagePassing):
-    """ The important stuff. """
+    """ The important stuff.
+        The derives from message passing base class which automates the process
+        of sending messages and updating the representation. One needs to write two function namely:
+        message and update. Rest is taken care by
+     """
 
     def __init__(self, in_channels, out_channels, num_rels, act=lambda x: x,
                  config=None):
@@ -27,19 +31,19 @@ class CompQGCNConvLayer(MessagePassing):
         self.act = act
         self.device = None
 
-        self.w_loop = get_param((in_channels, out_channels))  # (100,200)
-        self.w_in = get_param((in_channels, out_channels))  # (100,200)
-        self.w_out = get_param((in_channels, out_channels))  # (100,200)
+        self.w_loop = get_param((in_channels, out_channels))  # (100,200) self loop parameters
+        self.w_in = get_param((in_channels, out_channels))  # (100,200) inverse relation parameters
+        self.w_out = get_param((in_channels, out_channels))  # (100,200) regular relation parameters
         self.w_rel = get_param((in_channels, out_channels))  # (100,200)
 
-        if self.p['STATEMENT_LEN'] != 3:
+        if self.p['STATEMENT_LEN'] != 3: # which means there are qualifiers are present
             if self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'sum' or self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'mul':
                 self.w_q = get_param((in_channels, in_channels))  # new for quals setup
             elif self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'concat':
                 self.w_q = get_param((2 * in_channels, in_channels))  # need 2x size due to the concat operation
 
-        self.loop_rel = get_param((1, in_channels))  # (1,100)
-        self.loop_ent = get_param((1, in_channels))  # new
+        self.loop_rel = get_param((1, in_channels))  # (1,100) parameters for self-loop
+        self.loop_ent = get_param((1, in_channels))  #
 
         self.drop = torch.nn.Dropout(self.p['COMPGCNARGS']['GCN_DROP'])
         self.bn = torch.nn.BatchNorm1d(out_channels)
@@ -58,18 +62,71 @@ class CompQGCNConvLayer(MessagePassing):
 
     def forward(self, x, edge_index, edge_type, rel_embed,
                 qualifier_ent=None, qualifier_rel=None, quals=None):
+        """
+
+        See end of doc string for explaining.
+
+        :param x: all entities*dim_of_entities (for jf17k -> 28646*200)
+        :param edge_index: COO matrix (2 list each having nodes with index
+        [1,2,3,4,5]
+        [3,4,2,4,5]
+
+        Here node 1 and node 3 are connected with edge.
+        And the type of edge can be found using edge_type.
+
+        Note that there are twice the number of nodes as each edge is also reversed.
+        )
+        :param edge_type: The type of edge connecting the COO matrix
+        :param rel_embed: 2 Times Total relation * emb_dim (200 in our case and 2 Times because of inverse relations)
+        :param qualifier_ent:
+        :param qualifier_rel:
+        :param quals: Another sparse matrix
+
+        where
+            quals[0] --> rel_type
+            quals[1] --> edge_type
+            quals[2] --> index of the original COO matrix for which this qualifier exists ()
+
+
+        For argument sake if a knowledge graph has following statements
+
+        [e1,p1,e4,qr1,qe1,qr2,qe2]
+        [e1,p1,e2,qr1,qe1,qr2,qe3]
+        [e1,p2,e3,qr3,qe3,qr2,qe2]
+        [e1,p2,e5,qr1,qe1]
+        [e2,p1,e4]
+        [e4,p3,e3,qr4,qe1,qr2,qe4]
+        [e1,p1,e5]
+                                                 (incoming)         (outgoing)
+                                            <----(regular)------><---(inverse)------->
+        Edge index would be             :   [e1,e1,e1,e1,e2,e4,e1,e4,e2,e3,e5,e4,e3,e5]
+                                            [e4,e2,e3,e5,e4,e3,e5,e1,e1,e1,e1,e2,e4,e1]
+
+        Edge Type would be              :   [p1,p1,p2,p2,p1,p3,p1,p1_inv,p1_inv,p2_inv,p2_inv,p1_inv,p3_inv,p1_inv]
+
+                                            <-------on incoming-----------------><---------on outgoing-------------->
+        quals would be                  :   [qr1,qr2,qr1,qr2,qr3,qr2,qr1,qr4,qr2,qr1,qr2,qr1,qr2,qr3,qr2,qr1,qr4,qr2]
+                                            [qe1,qe2,qe1,qe3,qe3,qe2,qe1,qe1,qe4,qe1,qe2,qe1,qe3,qe3,qe2,qe1,qe1,qe4]
+                                            [0,0,1,1,2,2,3,5,5,0,0,1,1,2,2,3,5,5]
+                                            <--on incoming---><--outgoing------->
+
+        Note that qr1,qr2... and qe1, qe2, ... all belong to the same space
+        :return:
+        """
         if self.device is None:
             self.device = edge_index.device
 
-        rel_embed = torch.cat([rel_embed, self.loop_rel], dim=0)
-        num_edges = edge_index.size(1) // 2
-        num_ent = x.size(0)
+        rel_embed = torch.cat([rel_embed, self.loop_rel], dim=0) # adding self loop params
+        num_edges = edge_index.size(1) // 2 # as other half is repeated
+        num_ent = x.size(0) # entity embedding matrix
 
-        self.in_index, self.out_index = edge_index[:, :num_edges], edge_index[:, num_edges:]
+
+
+        self.in_index, self.out_index = edge_index[:, :num_edges], edge_index[:, num_edges:] # as first is regular index, second half is inverse rel
         self.in_type, self.out_type = edge_type[:num_edges], edge_type[num_edges:]
 
-        if self.p['STATEMENT_LEN'] != 3:
-            if self.p['COMPGCNARGS']['QUAL_REPR'] == "full":
+        if self.p['STATEMENT_LEN'] != 3: # qualifier information is present in the graph
+            if self.p['COMPGCNARGS']['QUAL_REPR'] == "full": # not used any more.
                 self.in_index_qual_ent, self.out_index_qual_ent = qualifier_ent[:, :num_edges], \
                                                                   qualifier_ent[:, num_edges:]
 
@@ -77,15 +134,24 @@ class CompQGCNConvLayer(MessagePassing):
                                                                   qualifier_rel[:, num_edges:]
             elif self.p['COMPGCNARGS']['QUAL_REPR'] == "sparse":
                 num_quals = quals.size(1) // 2
-                self.in_index_qual_ent, self.out_index_qual_ent = quals[1, :num_quals], quals[1, num_quals:]
-                self.in_index_qual_rel, self.out_index_qual_rel = quals[0, :num_quals], quals[0, num_quals:]
+                self.in_index_qual_ent, self.out_index_qual_ent = quals[1, :num_quals], quals[1, num_quals:] # first half if regular and second is repeated
+                self.in_index_qual_rel, self.out_index_qual_rel = quals[0, :num_quals], quals[0, num_quals:] # first half if regular amd second is the repeated
                 self.quals_index_in, self.quals_index_out = quals[2, :num_quals], quals[2, num_quals:]
 
+
+        '''
+            Adding self loop by creating a COO matrix. Thus \
+             loop index [1,2,3,4,5]
+                        [1,2,3,4,5]
+             loop type [10,10,10,10,10] --> assuming there are 9 relations
+            
+            
+        '''
         # Self edges between all the nodes
-        self.loop_index = torch.stack([torch.arange(num_ent), torch.arange(num_ent)]).to(self.device)
+        self.loop_index = torch.stack([torch.arange(num_ent), torch.arange(num_ent)]).to(self.device) # add self loop to the mix
         self.loop_type = torch.full((num_ent,), rel_embed.size(0) - 1,
                                     dtype=torch.long).to(self.device)  # if rel meb is 500, the index of the self emb is
-        # 499 .. which is just added here
+        # 499 .. which is just added here.
 
         self.in_norm = self.compute_norm(self.in_index, num_ent)
         self.out_norm = self.compute_norm(self.out_index, num_ent)
@@ -317,12 +383,31 @@ class CompQGCNConvLayer(MessagePassing):
 
     def qualifier_aggregate(self, qualifier_emb, rel_part_emb, alpha=0.5, qual_index=None):
         """
+            In qualifier_aggregate method following steps are performed
+
+            qualifier_emb looks like -
+            qualifier_emb      :   [a,b,c,d,e,f,g,......]               (here a,b,c ... are of 200 dim)
+            rel_part_emb       :   [qq,ww,ee,rr,tt, .....]                      (here qq, ww, ee .. are of 200 dim)
+
+            Note that rel_part_emb ifor jf17k in_loop would be around 61k*200
+
+            Step1 : Pass the qualifier_emb to self.coalesce_quals and multiply the returned output with a weight.
+            qualifier_emb   : [aa,bb,cc,dd,ee, ...... ]                 (here aa, bb, cc are of 200 dim each)
+            Note that now qualifier_emb has the same shape as rel_part_emb around 61k*200
+
+            Step2 : Combine the updated qualifier_emb (see Step1) with rel_part_emb based on defined aggregation strategy.
+
+
+
             Aggregates the qualifier matrix (3, edge_index, emb_dim)
         :param qualifier_emb:
         :param rel_part_emb:
         :param type:
         :param alpha
         :return:
+
+        self.coalesce_quals    returns   :  [q+a+b+d,w+c+e+g,e'+f,......]        (here each element in the list is of 200 dim)
+
 
         @TODO: Check for activation over qualifier_emb
         """
@@ -359,9 +444,37 @@ class CompQGCNConvLayer(MessagePassing):
     def update_rel_emb_with_qualifier(self, ent_embed, rel_embed,
                                       qualifier_ent, qualifier_rel, edge_type, qual_index=None):
         """
-        :param rel_embed:
-        :param qualifier_ent:
-        :param qualifier_rel:
+        The update_rel_emb_with_qualifier method performs following functions:
+
+        Input is the secondary COO matrix (QE (qualifier entity), QR (qualifier relation), Endgeindex (Connection to the primary COO))
+
+        Step1 : Embed all the input
+            Step1a : Embed the qualifier entity via ent_embed (So QE shape is 33k,1 -> 33k,200)
+            Step1b : Embed the qualifier relation via rel_embed (So QE shape is 33k,1 -> 33k,200)
+            Step1c : Embed the edge_type via rel_embed (So edge_type shape is 61k,1 -> 61k,200)
+
+        Step2 : Combine qualifier entity emb and qualifier relation emb to create qualifier emb (See self.qual_transform).
+            This is generally just summing up. But can be more complicated.
+
+        Step3 : Update the edge_type embedding with qualifier information. This uses scatter_add/scatter_mean.
+
+
+        before:
+            qualifier_emb      :   [a,b,c,d,e,f,g,......]               (here a,b,c ... are of 200 dim)
+            qual_index         :   [1,1,2,1,2,3,2,......]               (here 1,2,3 .. are edge index of Main COO)
+            edge_type          :   [q,w,e',r,t,y,u,i,o,p, .....]        (here q,w,e' .. are of 200 dim each)
+
+        After:
+            edge_type          :   [q+a+b+d,w+c+e+g,e'+f,......]        (here each element in the list is of 200 dim)
+
+
+        :param ent_embed: essentially x (28k*200 in case of Jf17k)
+        :param rel_embed: essentially relation embedding matrix
+
+        For secondary COO matrix (QE, QR, Endgeindex)
+        :param qualifier_ent:  QE
+        :param qualifier_rel: QR
+        edge_type:
         :return:
 
         index select from embedding
@@ -375,6 +488,7 @@ class CompQGCNConvLayer(MessagePassing):
         # qualifier_emb_ent = ent_embed[qualifier_ent.reshape(1, -1)]. \
         #     reshape(qualifier_ent.shape[0], qualifier_ent.shape[1], -1)
 
+        # Step 1: embed everything
         qualifier_emb_rel = rel_embed[qualifier_rel]
         qualifier_emb_ent = ent_embed[qualifier_ent]
 
@@ -396,6 +510,31 @@ class CompQGCNConvLayer(MessagePassing):
     # return qualifier_emb
     def message(self, x_j, x_i, edge_type, rel_embed, edge_norm, mode, ent_embed=None, qualifier_ent=None,
                 qualifier_rel=None, qual_index=None, source_index=None):
+        """
+
+        The message method performs following functions
+
+        Step1 : get updated relation representation (rel_embed) [edge_type] by aggregating qualifier information (self.update_rel_emb_with_qualifier).
+        Step2 : Transform the node embedding [the first list in the COO matrix] by incorporating updated relation embedding (self.rel_transform).
+        Step3 : Multiply updated node embedding (transform) by weight
+        Step4 : Return the node embedding. Over here the node embedding [the first list in COO matrix] is representing the message which will be sent on each edge
+
+
+        More information about updating relation representation please refer to self.update_rel_emb_with_qualifier
+
+        :param x_j:
+        :param x_i:
+        :param edge_type:
+        :param rel_embed:
+        :param edge_norm:
+        :param mode:
+        :param ent_embed:
+        :param qualifier_ent:
+        :param qualifier_rel:
+        :param qual_index:
+        :param source_index:
+        :return:
+        """
         weight = getattr(self, 'w_{}'.format(mode))
 
         if self.p['STATEMENT_LEN'] != 3:
@@ -439,6 +578,18 @@ class CompQGCNConvLayer(MessagePassing):
 
     @staticmethod
     def compute_norm(edge_index, num_ent):
+        """
+
+        Yet another torch scatter functionality. See coalesce_quals for a rough idea.
+
+        row         :      [1,1,2,3,3,4,4,4,4, .....]        (about 61k for Jf17k)
+        edge_weight :      [1,1,1,1,1,1,1,1,1,  ....] (same as row. So about 61k for Jf17k)
+        deg         :      [2,1,2,4,.....]            (same as num_ent about 28k in case of Jf17k)
+
+        :param edge_index:
+        :param num_ent:
+        :return:
+        """
         row, col = edge_index
         edge_weight = torch.ones_like(
             row).float()  # Identity matrix where we know all entities are there
@@ -465,6 +616,15 @@ class CompQGCNConvLayer(MessagePassing):
 
     def coalesce_quals(self, qual_embeddings, qual_index, num_edges, fill=0):
         """
+
+        before:
+            qualifier_emb      :   [a,b,c,d,e,f,g,......]               (here a,b,c ... are of 200 dim)
+            qual_index         :   [1,1,2,1,2,3,2,......]               (here 1,2,3 .. are edge index of Main COO)
+            edge_type          :   [0,0,0,0,0,0,0, .....]               (empty array of size num_edges)
+
+        After:
+            edge_type          :   [a+b+d,c+e+g,f ......]        (here each element in the list is of 200 dim)
+
         # TODO
         :param qual_embeddings: shape of [1, N_QUALS]
         :param qual_index: shape of [1, N_QUALS] which states which quals belong to which main relation from the index,

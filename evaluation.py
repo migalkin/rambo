@@ -327,6 +327,7 @@ class EvaluationBenchGNNMultiClass:
         metrics = []
         self.model.eval()
 
+        # save_stuff = []
         with Timer() as timer:
             with torch.no_grad():
                 for position in self.corruption_positions:
@@ -344,6 +345,7 @@ class EvaluationBenchGNNMultiClass:
                             else:
                                 quals = torch.tensor(eval_batch_direct[:, 3:], device=self.config['DEVICE'])
                                 scores = self.model.forward(subs, rels, quals)
+                            # save_stuff.append(scores, objs, labels,'position_0')
                             metr = self.compute(scores, objs, labels, metr)
                         left_metrics = self._summarize_metrics_(metr, len(self.left_eval))
 
@@ -362,6 +364,7 @@ class EvaluationBenchGNNMultiClass:
                             else:
                                 quals = torch.tensor(eval_batch_reci[:, 3:], device=self.config['DEVICE'])
                                 scores = self.model.forward(subs, rels, quals)
+                            # save_stuff.append(scores, objs, labels, 'position_1')
                             metr = self.compute(scores, objs, labels, metr)
                         right_metrics = self._summarize_metrics_(metr, len(self.right_eval))
 

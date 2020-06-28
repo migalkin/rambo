@@ -107,7 +107,7 @@ class CompQGCNEncoder(CompGCNBase):
         self.register_parameter('bias', Parameter(torch.zeros(self.num_ent)))
 
     def forward_base(self, sub, rel, drop1, drop2,
-                     quals=None, embed_qualifiers: bool = False, return_mask: bool = False):
+                     quaxls=None, embed_qualifiers: bool = False, return_mask: bool = False):
         """
         TODO: priyansh was here, mike too
         :param sub:
