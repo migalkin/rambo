@@ -828,7 +828,8 @@ def training_loop_node_classification(epochs: int,
                 if run_trn_testbench:
                     # Also run train testbench
                     train_preds = train_fn(train_mask_)
-                    tr_res = eval_fn(train_y_, train_preds)
+                    unsmoothed_labels = (train_y_ > 0.5).float()
+                    tr_res = eval_fn(unsmoothed_labels, train_preds)
                     train_rocauc.append(tr_res["rocauc"])
                     train_prcauc.append(tr_res["prcauc"])
 
