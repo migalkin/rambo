@@ -183,7 +183,7 @@ def extract_full_wd50k():
         class_labels = {k: v for batch in all_batches for (k, v) in batch.items()}
 
     json.dump(class_labels,
-              open(DIRNAME / f"nc_wf50k_full_class_labels.json", "w"),
+              open(DIRNAME / f"nc_wd50k_full_class_labels.json", "w"),
               indent=4)
 
     print("Done")
@@ -199,7 +199,7 @@ def extract_specific(ds):
         class_labels = {k: v for batch in all_batches for (k, v) in batch.items()}
 
     json.dump(class_labels,
-              open(DIRNAME / f"nc_wf50k_full_class_labels.json", "w"),
+              open(DIRNAME / f"nc_wd50k_full_class_labels.json", "w"),
               indent=4)
 
     print("Done")
@@ -257,6 +257,10 @@ def create_splits(ds):
     qual_only_entities = list(set(statement_all_entities).difference(set(statement_so)))
     triple_so = list(set([e for t in tgraph for e in [t[0], t[2]]]))
 
+    # filter only top K most freq labels
+    topk_triple_labels = filter_labels(tlabs)
+    topk_statement_labels = filter_labels(slabs)
+
     random.seed(42)
     train_vol, val_vol, test_vol = 0.8, 0.1, 0.1
     # idea: we want to predict the same S and O types in statements/triples
@@ -280,26 +284,62 @@ def create_splits(ds):
     stat_full_test_nodes = statement_all_entities[int(len(statement_all_entities)*(train_vol+val_vol)): ]
 
     # create the files
-    triple_train = {e: tlabs[e] for e in triple_train_nodes}
-    triple_val = {e: tlabs[e] for e in triple_val_nodes}
-    triple_test = {e: tlabs[e] for e in triple_test_nodes}
-    json.dump(triple_train, open(DIRNAME / "triples" / "nc_train_labels.json","w"), indent=True)
-    json.dump(triple_val, open(DIRNAME / "triples" / "nc_val_labels.json", "w"), indent=True)
-    json.dump(triple_test, open(DIRNAME / "triples" / "nc_test_labels.json", "w"), indent=True)
+    triple_train = {e: [label for label in tlabs[e] if label in topk_triple_labels] for e in triple_train_nodes}
+    triple_val = {e: [label for label in tlabs[e] if label in topk_triple_labels] for e in triple_val_nodes}
+    triple_test = {e: [label for label in tlabs[e] if label in topk_triple_labels] for e in triple_test_nodes}
+    # clean up nodes that have 0 labels
+    triple_train, triple_val, triple_test = clean_zeros(triple_train), clean_zeros(triple_val), clean_zeros(triple_test)
 
-    stat_so_train = {e: slabs[e] for e in stat_so_train_nodes}
-    stat_so_val = {e: slabs[e] for e in stat_so_val_nodes}
-    stat_so_test = {e: slabs[e] for e in stat_so_test_nodes}
-    stat_so_rest = {e: slabs[e] for e in stat_so_rest}
+    # check that val/test nodes do not contain unique labels
+    tr_train_labels = set([label for k,v in triple_train.items() for label in v])
+    tr_val_labels = set([label for k,v in triple_val.items() for label in v])
+    tr_test_labels = set([label for k,v in triple_test.items() for label in v])
+    tr_val_only = tr_val_labels.difference(tr_train_labels)
+    tr_test_only = tr_test_labels.difference(tr_train_labels)
+    assert len(tr_val_only) == 0 and len(tr_test_only) == 0, "Unseen labels in val and test, increase the label freq or remove those labels"
 
-    json.dump(stat_so_train, open(DIRNAME / "statements" / "nc_train_so_labels.json","w"), indent=True)
+    # Create statement-aware labels only for subject-object label prediction
+    stat_so_train = {e: [label for label in slabs[e] if label in topk_triple_labels] for e in stat_so_train_nodes}
+    stat_so_val = {e: [label for label in slabs[e] if label in topk_triple_labels] for e in stat_so_val_nodes}
+    stat_so_test = {e: [label for label in slabs[e] if label in topk_triple_labels] for e in stat_so_test_nodes}
+    stat_so_rest = {e: [label for label in slabs[e] if label in topk_triple_labels] for e in stat_so_rest}
+    # Clean up nodes that have 0 labels
+    stat_so_train, stat_so_val, stat_so_test = clean_zeros(stat_so_train), clean_zeros(stat_so_val), clean_zeros(stat_so_test)
+
+    # Check if all labels from val/test are present in the train set
+    so_train_labels = set([label for k, v in stat_so_train.items() for label in v])
+    so_val_labels = set([label for k, v in stat_so_val.items() for label in v])
+    so_test_labels = set([label for k, v in stat_so_test.items() for label in v])
+    so_val_only = so_val_labels.difference(so_train_labels)
+    so_test_only = so_test_labels.difference(so_train_labels)
+    assert len(so_val_only) == 0 and len(
+        so_test_only) == 0, "Unseen labels in val and test, increase the label freq or remove those labels"
+
+
+    # Create the full dataset from statements
+    stat_full_train = {e: [label for label in slabs[e] if label in topk_statement_labels] for e in stat_full_train_nodes}
+    stat_full_val = {e: [label for label in slabs[e] if label in topk_statement_labels] for e in stat_full_val_nodes}
+    stat_full_test = {e: [label for label in slabs[e] if label in topk_statement_labels] for e in stat_full_test_nodes}
+    # clean up nodes that have 0 labels
+    stat_full_train, stat_full_val, stat_full_test = clean_zeros(stat_full_train), clean_zeros(stat_full_val), clean_zeros(stat_full_test)
+
+    stat_train_labels = set([label for k, v in stat_full_train.items() for label in v])
+    stat_val_labels = set([label for k, v in stat_full_val.items() for label in v])
+    stat_test_labels = set([label for k, v in stat_full_test.items() for label in v])
+    stat_val_only = stat_val_labels.difference(stat_train_labels)
+    stat_test_only = stat_test_labels.difference(stat_train_labels)
+    assert len(stat_val_only) == 0 and len(
+        stat_test_only) == 0, "Unseen labels in val and test, increase the label freq or remove those labels"
+
+    # Dump the files
+    json.dump(triple_train, open(DIRNAME / "triples" / "nc_train_so_labels.json", "w"), indent=True)
+    json.dump(triple_val, open(DIRNAME / "triples" / "nc_val_so_labels.json", "w"), indent=True)
+    json.dump(triple_test, open(DIRNAME / "triples" / "nc_test_so_labels.json", "w"), indent=True)
+
+    json.dump(stat_so_train, open(DIRNAME / "statements" / "nc_train_so_labels.json", "w"), indent=True)
     json.dump(stat_so_val, open(DIRNAME / "statements" / "nc_val_so_labels.json", "w"), indent=True)
     json.dump(stat_so_test, open(DIRNAME / "statements" / "nc_test_so_labels.json", "w"), indent=True)
     json.dump(stat_so_rest, open(DIRNAME / "statements" / "nc_rest_so_labels.json", "w"), indent=True)
-
-    stat_full_train = {e: slabs[e] for e in stat_full_train_nodes}
-    stat_full_val = {e: slabs[e] for e in stat_full_val_nodes}
-    stat_full_test = {e: slabs[e] for e in stat_full_test_nodes}
 
     json.dump(stat_full_train, open(DIRNAME / "statements" / "nc_train_full_labels.json", "w"), indent=True)
     json.dump(stat_full_val, open(DIRNAME / "statements" / "nc_val_full_labels.json", "w"), indent=True)
@@ -308,11 +348,15 @@ def create_splits(ds):
     print("Done")
 
 
-def inspect_labels_distr(ds, subtype):
+def inspect_labels_distr(ds, subtype, min_label_freq=50):
     DIRNAME = Path(f'data/clean/{ds}/{subtype}')
 
-    with open(DIRNAME / f"nc_{ds.replace('15','50')}_class_labels.json", "r") as inp:
-        labels_dict = json.load(inp)
+    if subtype == "statements":
+        with open(DIRNAME / f"nc_{ds.replace('15','50')}_class_labels.json", "r") as inp:
+            labels_dict = json.load(inp)
+    else:
+        with open(DIRNAME / f"nc_class_labels.json", "r") as inp:
+            labels_dict = json.load(inp)
 
     all_labels = list(set([lab for k,v in labels_dict.items() for lab in v]))
     from collections import defaultdict
@@ -325,14 +369,36 @@ def inspect_labels_distr(ds, subtype):
             counts[label] += 1
 
     counts = {k: v for k, v in sorted(counts.items(), key=lambda item: item[1], reverse=True)}
-    plt.bar(range(len(counts)), list(counts.values()), align='center')
-    #plt.xticks(range(len(counts)), list(counts.keys()))
-    plt.show()
 
-    with open("distr.txt","w") as out:
-        for k,v in counts.items():
-            out.write(f"{v}\n")
+    filtered_labels = [k for k,v in counts.items() if v > min_label_freq]
 
+    return filtered_labels
+    # plt.bar(range(len(counts)), list(counts.values()), align='center')
+    # #plt.xticks(range(len(counts)), list(counts.keys()))
+    # plt.show()
+    #
+    # with open("distr.txt","w") as out:
+    #     for k,v in counts.items():
+    #         out.write(f"{v}\n")
+
+
+def filter_labels(dump, min_label_freq=50):
+    from collections import defaultdict
+
+    counts = defaultdict(int)
+
+    for k, v in dump.items():
+        for label in v:
+            counts[label] += 1
+
+    counts = {k: v for k, v in sorted(counts.items(), key=lambda item: item[1], reverse=True)}
+
+    filtered_labels = [k for k, v in counts.items() if v > min_label_freq]
+
+    return filtered_labels
+
+def clean_zeros(dump):
+    return {k: v for k,v in dump.items() if len(v) > 0}
 
 if __name__ == "__main__":
     # process_dataset_entities("wd15k", "statements", "full")
@@ -355,6 +421,6 @@ if __name__ == "__main__":
     #extract_full_wd50k()
     #extract_specific("wd15k_qonly")
     #obtain_ds_labels("wd15k_qonly")
-    #create_splits("wd15k_qonly")
-    inspect_labels_distr("wd15k","statements")
+    create_splits("wd15k")
+    #inspect_labels_distr("wd15k","triples")
     print("DONE")

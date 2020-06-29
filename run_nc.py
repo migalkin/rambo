@@ -77,7 +77,7 @@ DEFAULT_CONFIG = {
     'LABEL_SMOOTHING': 0.0,
     'SAMPLER_W_QUALIFIERS': False,
     'OPTIMIZER': 'adam',
-    'CLEANED_DATASET': False,
+    'CLEANED_DATASET': True,
 
     'GRAD_CLIPPING': True,
     'LR_SCHEDULER': True,
@@ -114,7 +114,7 @@ COMPGCNARGS = {
     'GAMMA': 40.0,
 
     # For ConvE Only
-    'HID_DROP2': 0.3,
+    'HID_DROP2': 0.1,
     'FEAT_DROP': 0.3,
     'N_FILTERS': 200,
     'KERNEL_SZ': 7,
