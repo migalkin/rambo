@@ -37,5 +37,5 @@ class StarE_NC(CompQGCNEncoder_NC):
 
         nodes = self.hidden_drop2(nodes)
         probs = self.to_classes(nodes)
-        probs = torch.sigmoid(probs)
+        #probs = torch.sigmoid(probs)
         return probs

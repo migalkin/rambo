@@ -176,6 +176,8 @@ class NodeClSampler:
             train_y[i] = lbls
             train_mask[i] = node
 
+        self.pos_weights = self.compute_weights(train_y)
+
         if self.lbl_smooth != 0.0:
             train_y = (1.0 - self.lbl_smooth)*train_y + (1.0 / len(train))
 
@@ -187,6 +189,15 @@ class NodeClSampler:
             eval_mask[i] = node
 
         return train_mask, train_y, eval_mask, eval_y
+
+    def compute_weights(self, data):
+        class_counts = data.sum(axis=0)
+        pos_weights = np.ones_like(class_counts)
+        neg_counts = np.array([len(data) - pos_count for pos_count in class_counts])  # <-- HERE
+        for cdx, (pos_count, neg_count) in enumerate(zip(class_counts, neg_counts)):
+            pos_weights[cdx] = neg_count / (pos_count + 1e-5)
+
+        return torch.as_tensor(pos_weights, dtype=torch.float)
 
     def get_data(self):
         return self.train_mask, self.train_y, self.eval_mask, self.eval_y

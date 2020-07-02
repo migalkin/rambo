@@ -765,7 +765,8 @@ def training_loop_node_classification(epochs: int,
                       save_content: Dict[str, list] = None,
                       qualifier_aware: bool = False,
                       grad_clipping: bool = True,
-                      scheduler: Callable = None) -> (list, list, list):
+                      scheduler: Callable = None,
+                      criterion: Callable = None) -> (list, list, list):
     train_loss = []
     train_rocauc = []
     train_prcauc = []
@@ -797,7 +798,7 @@ def training_loop_node_classification(epochs: int,
 
             pred = train_fn(train_mask_)
 
-            loss = train_fn.loss(pred, train_y_)
+            loss = criterion(pred, train_y_)
 
             per_epoch_loss = loss.item()
 

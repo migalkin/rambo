@@ -365,6 +365,7 @@ if __name__ == "__main__":
                                 lbl_smooth=config['LABEL_SMOOTHING'])
 
         args['data_fn'] = sampler.get_data
+        args['criterion'] = torch.nn.BCEWithLogitsLoss(pos_weight=sampler.pos_weights)
 
         if config['LR_SCHEDULER']:
             scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.95)
