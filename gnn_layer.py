@@ -62,12 +62,12 @@ class CompQGCNConvLayer(MessagePassing):
             assert self.p['COMPGCNARGS']['GCN_DIM'] == self.p[
                 'EMBEDDING_DIM'], "Current attn implementation requires those tto be identical"
             assert self.p['EMBEDDING_DIM'] % self.p['COMPGCNARGS']['ATTENTION_HEADS'] == 0, "should be divisible"
-            self.att_qual = get_param((1, self.heads, 2 * self.attn_dim))
             if not self.p['COMPGCNARGS']['ATTENTION']:
                 self.heads = self.p['COMPGCNARGS']['ATTENTION_HEADS']
                 self.attn_dim = self.out_channels // self.heads
                 self.negative_slope = self.p['COMPGCNARGS']['ATTENTION_SLOPE']
                 self.attn_drop = self.p['COMPGCNARGS']['ATTENTION_DROP']
+            self.att_qual = get_param((1, self.heads, 2 * self.attn_dim))
 
         if self.p['COMPGCNARGS']['BIAS']: self.register_parameter('bias', Parameter(
             torch.zeros(out_channels)))
