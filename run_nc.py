@@ -98,10 +98,10 @@ COMPGCNARGS = {
     'GCN_DROP': 0.1,
     'HID_DROP': 0.3,
     'BIAS': False,
-    'OPN': 'corr',
+    'OPN': 'rotate',
     'TRIPLE_QUAL_WEIGHT': 0.8,
     'QUAL_AGGREGATE': 'sum',  # or concat or mul
-    'QUAL_OPN': 'corr',
+    'QUAL_OPN': 'rotate',
     'QUAL_N': 'sum',  # or mean
     'SUBBATCH': 0,
     'QUAL_REPR': 'sparse',  # sparse or full
@@ -368,7 +368,7 @@ if __name__ == "__main__":
         args['criterion'] = torch.nn.BCEWithLogitsLoss(pos_weight=sampler.pos_weights.to(config['DEVICE']))
 
         if config['LR_SCHEDULER']:
-            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.95)
+            scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=200, gamma=0.95)
             args['scheduler'] = scheduler
 
 
