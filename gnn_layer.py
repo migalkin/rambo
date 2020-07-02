@@ -37,7 +37,8 @@ class CompQGCNConvLayer(MessagePassing):
         self.w_rel = get_param((in_channels, out_channels))  # (100,200)
 
         if self.p['STATEMENT_LEN'] != 3: # which means there are qualifiers are present
-            if self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'sum' or self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'mul':
+            if self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'sum' or self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'mul' or \
+                    self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'attn':
                 self.w_q = get_param((in_channels, in_channels))  # new for quals setup
             elif self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'concat':
                 self.w_q = get_param((2 * in_channels, in_channels))  # need 2x size due to the concat operation
@@ -56,6 +57,12 @@ class CompQGCNConvLayer(MessagePassing):
             self.negative_slope = self.p['COMPGCNARGS']['ATTENTION_SLOPE']
             self.attn_drop = self.p['COMPGCNARGS']['ATTENTION_DROP']
             self.att = get_param((1, self.heads, 2 * self.attn_dim))
+
+        if self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'attn':
+            assert self.p['COMPGCNARGS']['GCN_DIM'] == self.p[
+                'EMBEDDING_DIM'], "Current attn implementation requires those tto be identical"
+            assert self.p['EMBEDDING_DIM'] % self.p['COMPGCNARGS']['ATTENTION_HEADS'] == 0, "should be divisible"
+            self.att_qual = get_param((1, self.heads, 2 * self.attn_dim))
 
         if self.p['COMPGCNARGS']['BIAS']: self.register_parameter('bias', Parameter(
             torch.zeros(out_channels)))
@@ -438,6 +445,22 @@ class CompQGCNConvLayer(MessagePassing):
                 qualifier_emb = torch.mm(self.coalesce_quals(qualifier_emb, qual_index, rel_part_emb.shape[0], fill=1), self.w_q)
 
             return rel_part_emb * qualifier_emb
+
+        elif self.p['COMPGCNARGS']['QUAL_AGGREGATE'] == 'attn':
+            # only for sparse mode
+            expanded_rels = torch.index_select(rel_part_emb, 0, qual_index)  # Nquals x D
+            expanded_rels = expanded_rels.view(-1, self.heads, self.attn_dim)  # Nquals x heads x h_dim
+            qualifier_emb = torch.mm(qualifier_emb, self.w_q).view(-1, self.heads, self.attn_dim)  # Nquals x heads x h_dim
+
+            alpha_r = torch.einsum('bij,kij -> bi', [torch.cat([expanded_rels, qualifier_emb], dim=-1), self.att_qual])
+            alpha_r = F.leaky_relu(alpha_r, self.negative_slope)  # Nquals x heads
+            alpha_r = softmax(alpha_r, qual_index, rel_part_emb.size(0))  # Nquals x heads
+            alpha_r = F.dropout(alpha_r, p=self.attn_drop)  # Nquals x heads
+            expanded_rels = (expanded_rels * alpha_r.view(-1, self.heads, 1)).view(-1, self.heads * self.attn_dim)  # Nquals x D
+            single_rels = scatter_add(expanded_rels, qual_index, dim=0, dim_size=rel_part_emb.size(0), fill_value=0)  # Nedges x D
+            copy_mask = single_rels.sum(dim=1) != 0.0
+            rel_part_emb[copy_mask] = single_rels[copy_mask]  # Nedges x D
+            return rel_part_emb
         else:
             raise NotImplementedError
 
