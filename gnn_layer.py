@@ -299,18 +299,18 @@ class CompQGCNConvLayer(MessagePassing):
             if self.p['COMPGCNARGS']['SUBBATCH'] == 0:
                 in_res = self.propagate('add', self.in_index, x=x, edge_type=self.in_type,
                                         rel_embed=rel_embed, edge_norm=self.in_norm, mode='in',
-                                        ent_embed=None, qualifier_ent=None, qualifier_rel=None,
-                                        qual_index=None, source_index=None)
+                                        ent_embed=x, qualifier_ent=None, qualifier_rel=None,
+                                        qual_index=None, source_index=self.in_index[0])
 
                 loop_res = self.propagate('add', self.loop_index, x=x, edge_type=self.loop_type,
                                           rel_embed=rel_embed, edge_norm=None, mode='loop',
-                                          ent_embed=None, qualifier_ent=None, qualifier_rel=None,
+                                          ent_embed=x, qualifier_ent=None, qualifier_rel=None,
                                           qual_index=None, source_index=None)
 
                 out_res = self.propagate('add', self.out_index, x=x, edge_type=self.out_type,
                                          rel_embed=rel_embed, edge_norm=self.out_norm, mode='out',
-                                         ent_embed=None, qualifier_ent=None, qualifier_rel=None,
-                                         qual_index=None, source_index=None)
+                                         ent_embed=x, qualifier_ent=None, qualifier_rel=None,
+                                         qual_index=None, source_index=self.out_index[0])
             else:
                 loop_res = self.propagate('add', self.loop_index, x=x, edge_type=self.loop_type,
                                           rel_embed=rel_embed, edge_norm=None, mode='loop',
