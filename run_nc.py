@@ -82,7 +82,8 @@ DEFAULT_CONFIG = {
     'GRAD_CLIPPING': True,
     'LR_SCHEDULER': True,
 
-    'CL_TASK': 'so'  # so or full
+    'CL_TASK': 'so',  # so or full
+    'SWAP': False
 }
 
 KBGATARGS = {
@@ -196,7 +197,10 @@ if __name__ == "__main__":
     if config['USE_TEST']:
         input_data = {"train": train_y, "eval": test_y}
     else:
-        input_data = {"train": train_y, "eval": val_y}
+        if config['SWAP']:
+            input_data = {"train": val_y, "eval": train_y}
+        else:
+            input_data = {"train": train_y, "eval": val_y}
 
     if config['MODEL_NAME'].lower().startswith('stare'):
         # Replace the data with their graph repr formats
@@ -211,7 +215,7 @@ if __name__ == "__main__":
     else:
         train_data_gcn, valid_data_gcn, test_data_gcn = None, None, None
 
-    print(f"Training on {len(data['train_mask'])} entities")
+    print(f"Training on {len(input_data['train'])} entities")
 
     config['DEVICE'] = torch.device(config['DEVICE'])
 
