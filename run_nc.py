@@ -83,7 +83,9 @@ DEFAULT_CONFIG = {
     'LR_SCHEDULER': True,
 
     'CL_TASK': 'so',  # so or full
-    'SWAP': False
+    'SWAP': False,
+    'TR_RATIO': 1.0,
+    'VAL_RATIO': 1.0
 }
 
 KBGATARGS = {
@@ -198,8 +200,20 @@ if __name__ == "__main__":
         input_data = {"train": train_y, "eval": test_y}
     else:
         if config['SWAP']:
+            if config['TR_RATIO'] < 1.0:
+                tr_keys = random.sample(list(val_y), int(len(val_y)*config['TR_RATIO']))
+                val_y = {k: val_y[k] for k in tr_keys}
+            if config['VAL_RATIO'] < 1.0:
+                vl_keys = random.sample(list(train_y), int(len(train_y)*config['VAL_RATIO']))
+                train_y = {k: train_y[k] for k in vl_keys}
             input_data = {"train": val_y, "eval": train_y}
         else:
+            if config['TR_RATIO'] < 1.0:
+                tr_keys = random.sample(list(train_y), int(len(train_y)*config['TR_RATIO']))
+                train_y = {k: train_y[k] for k in tr_keys}
+            if config['VAL_RATIO'] < 1.0:
+                vl_keys = random.sample(list(val_y), int(len(val_y)*config['VAL_RATIO']))
+                val_y = {k: val_y[k] for k in vl_keys}
             input_data = {"train": train_y, "eval": val_y}
 
     if config['MODEL_NAME'].lower().startswith('stare'):
